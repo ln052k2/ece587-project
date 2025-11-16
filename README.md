@@ -13,11 +13,3 @@ The Alpha 21264 branch predictor uses 3 components:
     * 4K-entry table of 2-bit counters
 
 ALSO: a 2K-entry BTB (branch target buffer) for target addresses
-
-# Code Structure
-## Tournament.c
-* Acts as interface layer for SimpleScalar simulation
-    * Prediction function that is called before executing a branch
-    * Update function that is called after branch is resolved
-* Contains structs and pointers to the other files that represent the 3 components of the tournament predictor
-* Also includes helper functions to create, reset, and delete the branch predictor
