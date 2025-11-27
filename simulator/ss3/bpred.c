@@ -83,6 +83,10 @@ bpred_create(enum bpred_class class,	/* type of predictor to create */
   pred->class = class;
 
   switch (class) {
+  case BPredAlpha:
+    pred->direpred.alpha = alpha_create();
+    break;
+
   case BPredComb:
     /* bimodal component */
     pred->dirpred.bimod = 
@@ -373,6 +377,9 @@ bpred_reg_stats(struct bpred_t *pred,	/* branch predictor instance */
     case BPredNotTaken:
       name = "bpred_nottaken";
       break;
+    case BPredAlpha:
+      name = "bpred_alpha";
+      break;
     default:
       panic("bogus branch predictor class");
     }
@@ -579,6 +586,13 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
   dir_update_ptr->pmeta = NULL;
   /* Except for jumps, get a pointer to direction-prediction bits */
   switch (pred->class) {
+    case BPredAlpha:
+      /* Alpha predictor lookup: delegate to alpha module */
+      return alpha_lookup(pred->dirpred.alpha,
+                          baddr, btarget, op,
+                          is_call, is_return,
+                          dir_update_ptr, stack_recover_idx);
+
     case BPredComb:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
 	{
