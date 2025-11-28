@@ -273,6 +273,7 @@ FFLAGS = -DDEBUG
 # complete flags
 #
 CFLAGS = $(MFLAGS) $(FFLAGS) $(OFLAGS) $(BINUTILS_INC) $(BINUTILS_LIB)
+CFLAGS += -Ialpha
 
 #
 # all the sources
@@ -282,10 +283,12 @@ SRCS =	main.c sim-fast.c sim-safe.c sim-cache.c sim-profile.c \
 	memory.c regs.c cache.c bpred.c ptrace.c eventq.c \
 	resource.c endian.c dlite.c symbol.c eval.c options.c range.c \
 	eio.c stats.c endian.c misc.c \
+	alpha/local.c alpha/global.c alpha/choice.c alpha/btb.c alpha/alpha.c \
 	target-pisa/pisa.c target-pisa/loader.c target-pisa/syscall.c \
 	target-pisa/symbol.c \
 	target-alpha/alpha.c target-alpha/loader.c target-alpha/syscall.c \
 	target-alpha/symbol.c
+
 
 HDRS =	syscall.h memory.h regs.h sim.h loader.h cache.h bpred.h ptrace.h \
 	eventq.h resource.h endian.h dlite.h symbol.h eval.h bitmap.h \
@@ -300,8 +303,9 @@ HDRS =	syscall.h memory.h regs.h sim.h loader.h cache.h bpred.h ptrace.h \
 OBJS =	main.$(OEXT) syscall.$(OEXT) memory.$(OEXT) regs.$(OEXT) \
 	loader.$(OEXT) endian.$(OEXT) dlite.$(OEXT) symbol.$(OEXT) \
 	eval.$(OEXT) options.$(OEXT) stats.$(OEXT) eio.$(OEXT) \
-	range.$(OEXT) misc.$(OEXT) machine.$(OEXT)
-
+	range.$(OEXT) misc.$(OEXT) machine.$(OEXT) \
+	alpha/alpha.$(OEXT) alpha/local.$(OEXT) alpha/global.$(OEXT) \
+	alpha/choice.$(OEXT) alpha/btb.$(OEXT)
 #
 # programs to build
 #
