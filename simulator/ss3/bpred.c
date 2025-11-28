@@ -278,12 +278,11 @@ bpred_dir_create (
       if (!shift_width)
         fatal("perceptron: history length `%d' must be positive", shift_width);
 
- /* Clamp to internal array limits */
-    if (l1size > MAX_PERC)
+      /* Clamp to internal array limits */
+      if (l1size > MAX_PERC)
         l1size = MAX_PERC;
-    if (shift_width > MAX_HIST)
+      if (shift_width > MAX_HIST)
         shift_width = MAX_HIST;
-      
 
       /* Map arguments to perceptron view. */
       pred_dir->config.perc.weight_i    = l1size;
@@ -292,14 +291,21 @@ bpred_dir_create (
       pred_dir->config.perc.lookup_out  = 0;
       pred_dir->config.perc.i           = 0;
 
+       pred_dir->config.perc.max_weight =
+          (1 << (pred_dir->config.perc.weight_bits - 1)) - 1;
+
       /* Initialize history to +1 (taken bias). */
-      for (h = 0; h < pred_dir->config.perc.history < 100; h++)
+      for (h = 0; h < pred_dir->config.perc.history && h < MAX_HIST; h++)
         pred_dir->config.perc.mask_table[h] = 1;
+
+      /* Optionally clear rest */
+      for (; h < MAX_HIST; h++)
+        pred_dir->config.perc.mask_table[h] = 0;
 
       /* weight_table is already zeroed by calloc on bpred_dir_t. */
       break;
     }
-
+   
     // -Project ///////////////////////////////////////////// Perceptron //////
 
   case BPredTaken:
@@ -711,18 +717,45 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
   dir_update_ptr->pdir1 = NULL;
   dir_update_ptr->pdir2 = NULL;
   dir_update_ptr->pmeta = NULL;
+
   /* Except for jumps, get a pointer to direction-prediction bits */
   switch (pred->class) {
-    // -Project ///////////////////////////////////////////// Perceptron //////
-     case BPredPerc:
-    if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
-    {
-      /* Direction info comes from perceptron-backed dirpred.bimod. */
-      dir_update_ptr->pdir1 =
-        bpred_dir_lookup(pred->dirpred.bimod, baddr);
-    }
-    break;
-// -Project ///////////////////////////////////////////// Perceptron //////
+
+    /* ---------- PERCEPTRON LOOKUP ---------- */
+    case BPredPerc:
+      if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
+	{
+	  int hist = pred->dirpred.bimod->config.perc.history;
+	  int idx;
+	  int y;
+
+	  if (hist > MAX_HIST)
+	    hist = MAX_HIST;
+
+	  /* same index scheme as update */
+	 // idx = (baddr >> 2) % pred->dirpred.bimod->config.perc.weight_i;
+	 //
+
+idx = (((baddr >> 2) ^ (baddr >> 13) ^ (baddr >> 17))
+       & (pred->dirpred.bimod->config.perc.weight_i - 1));
+	  
+
+	  /* dot-product: bias + Σ (w_i * h_i) */
+	  y = pred->dirpred.bimod->config.perc.weight_table[idx][0]; /* bias */
+
+	  for (i = 1; i < hist; i++)
+	    {
+	      int x = pred->dirpred.bimod->config.perc.mask_table[i];
+	      if (x == 0) x = -1;
+	      y += pred->dirpred.bimod->config.perc.weight_table[idx][i] * x;
+	    }
+
+	  /* stash output and index for update stage */
+	  pred->dirpred.bimod->config.perc.lookup_out = y;
+	  pred->dirpred.bimod->config.perc.i = idx;
+	}
+      break;
+    /* ---------- END PERCEPTRON LOOKUP ------ */
 
     case BPredComb:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
@@ -747,6 +780,7 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
 	    }
 	}
       break;
+
     case BPred2Level:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
 	{
@@ -754,6 +788,7 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
 	    bpred_dir_lookup (pred->dirpred.twolev, baddr);
 	}
       break;
+
     case BPred2bit:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
 	{
@@ -761,8 +796,10 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
 	    bpred_dir_lookup (pred->dirpred.bimod, baddr);
 	}
       break;
+
     case BPredTaken:
       return btarget;
+
     case BPredNotTaken:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
 	{
@@ -772,6 +809,7 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
 	{
 	  return btarget;
 	}
+
     default:
       panic("bogus predictor class");
   }
@@ -844,6 +882,19 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
       return (pbtb ? pbtb->target : 1);
     }
 
+  /* ---------- PERCEPTRON FINAL PREDICTION ---------- */
+  if (pred->class == BPredPerc)
+    {
+      int y = pred->dirpred.bimod->config.perc.lookup_out;
+      int taken_pred = (y >= 0);
+
+      if (pbtb == NULL)
+	return taken_pred ? 1 : 0;
+      else
+	return taken_pred ? pbtb->target : 0;
+    }
+  /* ---------- END PERCEPTRON PREDICTION ------------ */
+
   /* otherwise we have a conditional branch */
   if (pbtb == NULL)
     {
@@ -885,6 +936,8 @@ bpred_recover(struct bpred_t *pred,	/* branch predictor instance */
    PRED_TAKEN, predictor state to be updated is indicated by *DIR_UPDATE_PTR 
    (may be NULL for jumps, which shouldn't modify state bits).  Note if
    bpred_update is done speculatively, branch-prediction may get polluted. */
+
+
 void
 bpred_update(struct bpred_t *pred,	/* branch predictor instance */
 	     md_addr_t baddr,		/* branch address */
@@ -1056,170 +1109,81 @@ bpred_update(struct bpred_t *pred,	/* branch predictor instance */
    * matched-on entry or a victim which was LRU in its set)
    */
 
+  /* ---------- PERCEPTRON UPDATE SEPARATED FROM BIMODAL ---------- */
+  if (pred->class == BPredPerc)
+    {
+      int idx;
+      int t = taken ? +1 : -1;
+      int y = pred->dirpred.bimod->config.perc.lookup_out;
+      int hist = pred->dirpred.bimod->config.perc.history;
+      int MAXW = pred->dirpred.bimod->config.perc.max_weight;
+
+      if (hist > MAX_HIST)
+	hist = MAX_HIST;
+
+      /* index recomputed (same as lookup) */
+     // idx = (baddr >> 2) % pred->dirpred.bimod->config.perc.weight_i;
+     //
+
+idx = (((baddr >> 2) ^ (baddr >> 13) ^ (baddr >> 17))
+       & (pred->dirpred.bimod->config.perc.weight_i - 1));
+      
+
+      {
+	int abs_y = (y < 0 ? -y : y);
+	int theta = (int)(1.93 * hist) + 14;
+
+/* Extra stabilization for large histories */
+if (hist > 32)
+    theta += hist / 4;
+
+	if ((t * y) <= 0 || abs_y <= theta)
+	  {
+	    /* bias weight w0 */
+	    int w0 = pred->dirpred.bimod->config.perc.weight_table[idx][0];
+	    w0 += t;
+	    if (w0 > MAXW)  w0 = MAXW;
+	    if (w0 < -MAXW) w0 = -MAXW;
+	    pred->dirpred.bimod->config.perc.weight_table[idx][0] = w0;
+
+	    /* other weights */
+	    for (i = 1; i < hist; i++)
+	      {
+		int x = pred->dirpred.bimod->config.perc.mask_table[i];
+		if (x == 0) x = -1;
+		int w = pred->dirpred.bimod->config.perc.weight_table[idx][i];
+
+		w += (t == x) ? 1 : -1;
+
+		if (w > MAXW)  w = MAXW;
+		if (w < -MAXW) w = -MAXW;
+
+		pred->dirpred.bimod->config.perc.weight_table[idx][i] = w;
+	      }
+	  }
+      }
+
+      /* history shift */
+     
+
+/* Correct history shift: move older to the front */
+for (i = 0; i < hist - 1; i++)
+    pred->dirpred.bimod->config.perc.mask_table[i] =
+        pred->dirpred.bimod->config.perc.mask_table[i + 1];
+
+/* Insert newest outcome at the END */
+pred->dirpred.bimod->config.perc.mask_table[hist - 1] =
+    (taken ? +1 : -1);
+
+
+      /* do NOT touch bimodal counters; done for this branch */
+      return;
+    }
+  /* ---------- END PERCEPTRON UPDATE ----------------------------- */
+
   /* update state (but not for jumps) */
   if (dir_update_ptr->pdir1)
     {
-      // -Project ///////////////////////////////////////////// Perceptron //////
-  /*
-  * Perceptron-Based Branch Predictor Weight Update
-  * 
-  * This section updates the weights of the perceptron-based branch predictor.
-  * It's executed after the actual branch direction is resolved.
-  *
-  * Steps:
-  * 1. Calculate the threshold (theta) for weight updating using the formula from the referenced paper.
-  * 2. Determine the actual branch outcome (t) as 1 (taken) or -1 (not taken).
-  * 3. Adjust the perceptron output (lookup_out) to always be positive for comparison.
-  * 4. Check if weights need to be updated based on the perceptron output and actual outcome.
-  * 5. Update the weights based on the history and actual outcome.
-  *    - Increment or decrement weights depending on the match with actual outcome.
-  *    - Clamp weights within the range [-128, 127] to avoid overflow.
-  * 6. Update the history of branch outcomes, shifting in the most recent outcome.
-  */
-
-
-
-	   //////////////////////////////////////////////////////////////////////////////
-	   /////////////////////////////////////////////////////////////////////////////////
-
-// -Project ////////////////////////////////////////////////////// Perceptron
-if (pred->class == BPredPerc)
-{
-    int h;
-    int t        = taken ? 1 : -1;     // +1 for taken, -1 for not taken
-    int y        = pred->dirpred.bimod->config.perc.lookup_out;
-    int hist_len = pred->dirpred.bimod->config.perc.history;
-    int idx      = pred->dirpred.bimod->config.perc.i;
-
-    /* Clamp history length */
-    if (hist_len > MAX_HIST)
-        hist_len = MAX_HIST;
-    if (hist_len < 1)
-        hist_len = 1;
-
-    // Compute absolute value of perceptron output
-    int abs_y = (y < 0) ? -y : y;
-
-    // Threshold theta based on history length
-    int theta = (int)(2.0 * hist_len + 14);
-
-    // Condition for training:
-    // 1) wrong sign   OR
-    // 2) weak prediction (abs(y) <= theta)
-    if ((t * y) <= 0 || abs_y <= theta)
-    {
-                   /* Update weights w_0..w_(hist_len-1) */
-        for (h = 0; h < hist_len; h++)
-        {
-            int x;
-
-            if (h == 0)
-            {
-                /* bias input x0 = 1 */
-                x = 1;
-            }
-            else
-            {
-                x = pred->dirpred.bimod->config.perc.mask_table[h];
-                if (x == 0) x = -1;  /* ensure ±1 */
-            }
-
-            int w = pred->dirpred.bimod->config.perc.weight_table[idx][h];
-            if (t == x)
-                w++;
-            else
-                w--;
-
-            // Saturate to avoid overflow
-            if (w > 127) w = 127;
-            if (w < -128) w = -128;
-
-            pred->dirpred.bimod->config.perc.weight_table[idx][h] = w;
-        }
-
-
-	 /* Shift global history: newest at index 1..(hist_len-1) */
-        if (hist_len > 1)
-        {
-            for (h = hist_len - 1; h > 1; h--)
-            {
-                pred->dirpred.bimod->config.perc.mask_table[h] =
-                    pred->dirpred.bimod->config.perc.mask_table[h - 1];
-            }
-
-            /* store newest branch at position 1 (0 is implicit bias) */
-            pred->dirpred.bimod->config.perc.mask_table[1] =
-                taken ? 1 : -1;
-        }
-    }
-}
-       // -Project ////////////////////////////////////////////////////// Perceptron
-
-
-
-
-
-
-/*
-   if (pred->class == BPredPerc)
-      {
-        int h;
-        int t        = taken ? 1 : -1;
-        int y        = pred->dirpred.bimod->config.perc.lookup_out;
-        int hist_len = pred->dirpred.bimod->config.perc.history;
-        int idx      = pred->dirpred.bimod->config.perc.i;
-        int theta;
-        int abs_y;
-
-        theta = (int)(1.93 * hist_len + 14);
-        abs_y = (y < 0) ? -y : y;
-
-        if ((t * y) <= 0 || abs_y <= theta)
-        {
-          // Adjust weights. 
-          for (h = 0;
-               h < hist_len && h < 100;
-               h++)
-          {
-            int x = pred->dirpred.bimod->config.perc.mask_table[h];
-            int w = pred->dirpred.bimod->config.perc.weight_table[idx][h];
-
-            // If history bit was encoded as 0, treat it as -1. 
-            if (x == 0)
-              x = -1;
-
-            if (t == x)
-              w++;
-            else
-              w--;
-
-            if (w > 127)   w = 127;
-            if (w < -128)  w = -128;
-
-            pred->dirpred.bimod->config.perc.weight_table[idx][h] = w;
-          }
-
-          // Shift history: newest outcome at position 0, older ones move up. 
-          if (hist_len > 0)
-          {
-            for (h = hist_len - 1; h > 0 && h < 100; h--)
-            {
-              pred->dirpred.bimod->config.perc.mask_table[h] =
-                pred->dirpred.bimod->config.perc.mask_table[h - 1];
-            }
-
-            pred->dirpred.bimod->config.perc.mask_table[0] =
-              taken ? 1 : -1;
-          }
-        }
-      }
-
-  */
-
-	   //////////////////////////////////////////////////////////////////////////////
-	   /////////////////////////////////////////////////////////////////////////////////
-
-  // -Project ///////////////////////////////////////////// Perceptron //////
       if (taken)
 	{
 	  if (*dir_update_ptr->pdir1 < 3)
@@ -1289,3 +1253,4 @@ if (pred->class == BPredPerc)
 	}
     }
 }
+

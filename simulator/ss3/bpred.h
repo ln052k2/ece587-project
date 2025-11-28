@@ -139,7 +139,8 @@ struct bpred_dir_t {
       int weight_i;		                    /* weightt indices */
       int weight_bits;	                  /* weight bits */
       int history;		                    /* history length for global history */ 
-      int lookup_out;		                  /* output of each lookup*/   
+      int lookup_out;		                  /* output of each lookup*/  
+       int max_weight;                      /* NEW: saturation limit */ 
       signed int weight_table[MAX_PERC][MAX_HIST];	/* weight table, 2 dimensional array with an arbitrary large number to accomodate multiple scenarios */ 
       signed int mask_table[MAX_HIST];         /* masks table */
       int i;		                          /* index */   
