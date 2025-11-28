@@ -1,41 +1,39 @@
+// Local predictor: LHT indexed by PC -> LPHT (2-bit counters)
+
 #include "local.h"
 
-// Creates the local branch predictor
+// Helper: safe calloc
+static void *xcalloc_local(size_t n, size_t s) {
+    void *p = calloc(n, s);
+    if (!p) fatal("local: out of memory");
+    return p;
+}
+
+// Create local predictor
 local_pred_t *local_create(uint32_t history_bits, uint32_t lht_entries) {
-    local_pred_t *lp = (local_pred_t*)malloc(sizeof(local_pred_t));
-    if (!lp) return NULL;
-
+    local_pred_t *lp = (local_pred_t*)xcalloc_local(1, sizeof(local_pred_t));
     lp->history_bits = history_bits;
-    lp->lht_size = lht_entries;
+    lp->lht_entries = lht_entries;
+    lp->lpht_entries = 1u << history_bits;
+    lp->lht_mask = lht_entries - 1;
+    lp->lpht_mask = lp->lpht_entries - 1;
 
-    // Allocate Local History Table (LHT)
-    lp->lht = (uint16_t*)malloc(lht_entries * sizeof(uint16_t));
-    memset(lp->lht, 0, lht_entries * sizeof(uint16_t));
+    lp->lht = (uint32_t*)xcalloc_local(lp->lht_entries, sizeof(uint32_t));
+    lp->lpht = (unsigned char*)xcalloc_local(lp->lpht_entries, sizeof(unsigned char));
 
-    // Allocate Local Pattern History Table (LPHT)
-    lp->lpht_size = 1u << history_bits;
-    lp->lpht = (uint8_t*)malloc(lp->lpht_size * sizeof(uint8_t));
-
-    // Initialize LPHT to weakly taken
-    for (uint32_t i = 0; i < lp->lpht_size; i++)
-        lp->lpht[i] = COUNTER_WEAKLY_TAKEN;
-
+    // Initialize LPHT counters to weakly not-taken (1)
+    for (uint32_t i = 0; i < lp->lpht_entries; ++i) lp->lpht[i] = 1;
     return lp;
 }
 
-// Reset predictor contents
+// Reset local predictor
 void local_reset(local_pred_t *lp) {
     if (!lp) return;
-
-    // Reset LHT entries
-    memset(lp->lht, 0, lp->lht_size * sizeof(uint16_t));
-
-    // Reset LPHT counters to weakly taken
-    for (uint32_t i = 0; i < lp->lpht_size; i++)
-        lp->lpht[i] = COUNTER_WEAKLY_TAKEN;
+    memset(lp->lht, 0, lp->lht_entries * sizeof(uint32_t));
+    for (uint32_t i = 0; i < lp->lpht_entries; ++i) lp->lpht[i] = 1;
 }
 
-// Clear predictor memory
+// Clear local predictor
 void local_clear(local_pred_t *lp) {
     if (!lp) return;
     free(lp->lht);
@@ -43,56 +41,35 @@ void local_clear(local_pred_t *lp) {
     free(lp);
 }
 
-// Predict taken / not taken
-uint8_t local_predict(local_pred_t *lp, uint32_t pc) {
-    uint32_t lht_idx = local_lht_index(lp, pc);
-    uint32_t history = lp->lht[lht_idx];
-
-    uint32_t lpht_idx = history & (lp->lpht_size - 1);
-    uint8_t counter = lp->lpht[lpht_idx];
-
-    // Return 1 for taken, 0 for not taken
-    return (counter >= COUNTER_WEAKLY_TAKEN);
+// Compute LHT index from PC
+static inline uint32_t local_lht_index(local_pred_t *lp, md_addr_t pc) {
+    return (pc >> MD_BR_SHIFT) & lp->lht_mask;
 }
 
-// Update the predictor based on actual outcome
-void local_update(local_pred_t *lp, uint32_t pc, uint8_t taken) {
-    uint32_t lht_idx = local_lht_index(lp, pc);
-    uint32_t history = lp->lht[lht_idx];
+// Get LPHT index (from local history)
+static inline uint32_t local_lpht_index(local_pred_t *lp, uint32_t local_hist) {
+    return local_hist & lp->lpht_mask;
+}
 
-    uint32_t lpht_idx = history & (lp->lpht_size - 1);
+// Lookup local prediction (0/1)
+int local_lookup(local_pred_t *lp, md_addr_t pc) {
+    uint32_t li = local_lht_index(lp, pc);
+    uint32_t hist = lp->lht[li] & ((1u << lp->history_bits) - 1);
+    unsigned char ctr = lp->lpht[local_lpht_index(lp, hist)];
+    return (ctr >= 2) ? 1 : 0;
+}
 
-    // Update counter
-    if (taken)
-        lp->lpht[lpht_idx] = counter_inc(lp->lpht[lpht_idx]);
-    else
-        lp->lpht[lpht_idx] = counter_dec(lp->lpht[lpht_idx]);
+// Return pointer to the underlying 2-bit counter (0..3)
+unsigned char *local_get_counter(local_pred_t *lp, md_addr_t pc) {
+    uint32_t li = local_lht_index(lp, pc);
+    uint32_t hist = lp->lht[li] & ((1u << lp->history_bits) - 1);
+    uint32_t idx = local_lpht_index(lp, hist);
+    return &lp->lpht[idx];
+}
 
-    // Update local history: shift in outcome
-    history = ((history << 1) | (taken & 1));
-
-    // Mask to limit history size
+// Update local history only (do not change counters)
+void local_update_history(local_pred_t *lp, md_addr_t pc, int taken) {
+    uint32_t li = local_lht_index(lp, pc);
     uint32_t mask = (1u << lp->history_bits) - 1;
-    lp->lht[lht_idx] = (history & mask);
-}
-
-/***********************************************************
-* HELPER FUNCTIONS
-*************************************************************/
-
-// Compute LHT index using PC
-static inline uint32_t local_lht_index(local_pred_t *lp, uint32_t pc) {
-    return (pc >> 2) & (lp->lht_size - 1);
-}
-
-// Increment 2-bit counter
-static inline uint8_t counter_inc(uint8_t c) {
-    if (c < COUNTER_STRONGLY_TAKEN) c++;
-    return c;
-}
-
-// Decrement 2-bit counter
-static inline uint8_t counter_dec(uint8_t c) {
-    if (c > COUNTER_STRONGLY_NOT_TAKEN) c--;
-    return c;
+    lp->lht[li] = ((lp->lht[li] << 1) | (taken ? 1u : 0u)) & mask;
 }

@@ -1,89 +1,59 @@
+// Global predictor: GHR indexed GPHT with 2-bit counters
+
 #include "global.h"
 
+// Helper: safe calloc
+static void *xcalloc_global(size_t n, size_t s) {
+    void *p = calloc(n, s);
+    if (!p) fatal("global: out of memory");
+    return p;
+}
 
-// Creates a global predictor
+// Create global predictor
 global_pred_t *global_create(uint32_t history_bits) {
-    global_pred_t *gp = (global_pred_t*)malloc(sizeof(global_pred_t));
-    if (!gp) return NULL;
-
+    global_pred_t *gp = (global_pred_t*)xcalloc_global(1, sizeof(global_pred_t));
     gp->history_bits = history_bits;
-    gp->history = 0;
+    gp->gpht_entries = 1u << history_bits;
+    gp->gpht_mask = gp->gpht_entries - 1;
+    gp->ghr = 0;
+    gp->gpht = (unsigned char*)xcalloc_global(gp->gpht_entries, sizeof(unsigned char));
 
-    // Allocate the pattern history table
-    gp->pht_size = 1u << history_bits;
-    gp->pht = (uint8_t*)malloc(gp->pht_size * sizeof(uint8_t));
-
-    // Initialize counters to weakly taken
-    for (uint32_t i = 0; i < gp->pht_size; i++)
-        gp->pht[i] = COUNTER_WEAKLY_TAKEN;
-
+    // Initialize GPHT to weakly not-taken (1)
+    for (uint32_t i = 0; i < gp->gpht_entries; ++i) gp->gpht[i] = 1;
     return gp;
 }
 
-// Predict taken/not-taken using global history
-uint8_t global_predict(global_pred_t *gp, uint32_t pc) {
-    uint32_t idx = global_index(gp, pc);
-    uint8_t counter = gp->pht[idx];
-
-    // Return 1 for taken, 0 for not taken
-    return (counter >= COUNTER_WEAKLY_TAKEN);
-}
-
-// Update predictor based on actual outcome
-void global_update(global_pred_t *gp, uint32_t pc, uint8_t taken) {
-    uint32_t idx = global_index(gp, pc);
-
-    // Update saturating counter
-    if (taken)
-        gp->pht[idx] = counter_inc(gp->pht[idx]);
-    else
-        gp->pht[idx] = counter_dec(gp->pht[idx]);
-
-    // Shift in the new history bit
-    gp->history = ((gp->history << 1) | (taken & 1));
-
-    // Mask to maintain correct history width
-    uint32_t mask = (1u << gp->history_bits) - 1;
-    gp->history &= mask;
-}
-
-
-// Reset global predictor state
+// Reset global predictor
 void global_reset(global_pred_t *gp) {
     if (!gp) return;
-
-    gp->history = 0;
-
-    // Reset all counters to weakly taken
-    for (uint32_t i = 0; i < gp->pht_size; i++)
-        gp->pht[i] = COUNTER_WEAKLY_TAKEN;
+    gp->ghr = 0;
+    for (uint32_t i = 0; i < gp->gpht_entries; ++i) gp->gpht[i] = 1;
 }
 
-// Free global predictor memory
+// Clear global predictor
 void global_clear(global_pred_t *gp) {
     if (!gp) return;
-    free(gp->pht);
+    free(gp->gpht);
     free(gp);
 }
 
-/***********************************************************
-* HELPER FUNCTIONS
-*************************************************************/
-
-// Compute index into PHT based on global history 
-static inline uint32_t global_index(global_pred_t *gp, uint32_t pc) {
-    uint32_t mask = gp->pht_size - 1;
-    return gp->history & mask;
+// Lookup global prediction
+int global_lookup(global_pred_t *gp) {
+    unsigned char ctr = gp->gpht[gp->ghr & gp->gpht_mask];
+    return (ctr >= 2) ? 1 : 0;
 }
 
-// Increment 2-bit saturating counter
-static inline uint8_t counter_inc(uint8_t c) {
-    if (c < COUNTER_STRONGLY_TAKEN) c++;
-    return c;
+// Return pointer to the underlying GPHT counter
+unsigned char *global_get_counter(global_pred_t *gp) {
+    return &gp->gpht[gp->ghr & gp->gpht_mask];
 }
 
-// Decrement 2-bit saturating counter
-static inline uint8_t counter_dec(uint8_t c) {
-    if (c > COUNTER_STRONGLY_NOT_TAKEN) c--;
-    return c;
+// Update global history only
+void global_update_history(global_pred_t *gp, int taken) {
+    gp->ghr = ((gp->ghr << 1) | (taken ? 1u : 0u)) & gp->gpht_mask;
+}
+
+// Return current GHR
+uint32_t global_get_ghr(global_pred_t *gp) {
+    return gp->ghr;
 }
