@@ -127,6 +127,7 @@ bpred_create(enum bpred_class class,	/* type of predictor to create */
   case BPredComb:
   case BPred2Level:
   case BPred2bit:
+  case BPredAlpha21264:
     {
       int i;
 
@@ -940,55 +941,64 @@ bpred_update(struct bpred_t *pred,	/* branch predictor instance */
    */
 
   /* update state (but not for jumps) */
-  if (dir_update_ptr->pdir1)
+  if (pred->class == BPredAlpha21264)
+    {
+      /* delegate updates to Alpha 21264 specific updater */
+      if (pred->dirpred.alpha21264)
+        bpred_alpha21264_update(pred->dirpred.alpha21264, baddr, taken);
+    }
+  else
+    {
+      if (dir_update_ptr->pdir1)
     {
       if (taken)
-	{
-	  if (*dir_update_ptr->pdir1 < 3)
-	    ++*dir_update_ptr->pdir1;
-	}
+        {
+          if (*dir_update_ptr->pdir1 < 3)
+        ++*dir_update_ptr->pdir1;
+        }
       else
-	{ /* not taken */
-	  if (*dir_update_ptr->pdir1 > 0)
-	    --*dir_update_ptr->pdir1;
-	}
+        { /* not taken */
+          if (*dir_update_ptr->pdir1 > 0)
+        --*dir_update_ptr->pdir1;
+        }
     }
 
-  /* combining predictor also updates second predictor and meta predictor */
-  /* second direction predictor */
-  if (dir_update_ptr->pdir2)
+      /* combining predictor also updates second predictor and meta predictor */
+      /* second direction predictor */
+      if (dir_update_ptr->pdir2)
     {
       if (taken)
-	{
-	  if (*dir_update_ptr->pdir2 < 3)
-	    ++*dir_update_ptr->pdir2;
-	}
+        {
+          if (*dir_update_ptr->pdir2 < 3)
+        ++*dir_update_ptr->pdir2;
+        }
       else
-	{ /* not taken */
-	  if (*dir_update_ptr->pdir2 > 0)
-	    --*dir_update_ptr->pdir2;
-	}
+        { /* not taken */
+          if (*dir_update_ptr->pdir2 > 0)
+        --*dir_update_ptr->pdir2;
+        }
     }
 
-  /* meta predictor */
-  if (dir_update_ptr->pmeta)
+      /* meta predictor */
+      if (dir_update_ptr->pmeta)
     {
       if (dir_update_ptr->dir.bimod != dir_update_ptr->dir.twolev)
-	{
-	  /* we only update meta predictor if directions were different */
-	  if (dir_update_ptr->dir.twolev == (unsigned int)taken)
-	    {
-	      /* 2-level predictor was correct */
-	      if (*dir_update_ptr->pmeta < 3)
-		++*dir_update_ptr->pmeta;
-	    }
-	  else
-	    {
-	      /* bimodal predictor was correct */
-	      if (*dir_update_ptr->pmeta > 0)
-		--*dir_update_ptr->pmeta;
-	    }
-	}
+        {
+          /* we only update meta predictor if directions were different */
+          if (dir_update_ptr->dir.twolev == (unsigned int)taken)
+        {
+          /* 2-level predictor was correct */
+          if (*dir_update_ptr->pmeta < 3)
+            ++*dir_update_ptr->pmeta;
+        }
+          else
+        {
+          /* bimodal predictor was correct */
+          if (*dir_update_ptr->pmeta > 0)
+            --*dir_update_ptr->pmeta;
+        }
+        }
+    }
     }
 
   /* update BTB (but only for taken branches) */
