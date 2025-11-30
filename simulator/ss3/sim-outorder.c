@@ -219,13 +219,6 @@ static int res_fpalu;
 /* total number of floating point multiplier/dividers available */
 static int res_fpmult;
 
-/* Alpha 21264 predictor config (<local_size> <pred_table_size>
-   <hist_width> <choice_size>) */
-static int alpha21264_nelt = 4;
-static int alpha21264_config[4] =
-  { 1024, 1024, 10, 4096};
-
-
 /* text-based stat profiles */
 #define MAX_PCSTAT_VARS 8
 static int pcstat_nelt = 0;
@@ -402,6 +395,12 @@ static struct res_pool *fu_pool = NULL;
 static struct stat_stat_t *pcstat_stats[MAX_PCSTAT_VARS];
 static counter_t pcstat_lastvals[MAX_PCSTAT_VARS];
 static struct stat_stat_t *pcstat_sdists[MAX_PCSTAT_VARS];
+
+/* Alpha 21264 predictor config (<local_size> <pred_table_size>
+   <hist_width> <choice_size>) */
+static int alpha21264_nelt = 4;
+static int alpha21264_config[4] =
+  { 1024, 1024, 10, 4096};
 
 /* wedge all stat values into a counter_t */
 #define STATVAL(STAT)							\
@@ -656,10 +655,18 @@ sim_reg_options(struct opt_odb_t *odb)
 "  Predictor `comb' combines a bimodal and a 2-level predictor.\n"
                );
 
+
   opt_reg_string(odb, "-bpred",
                "branch predictor type {nottaken|taken|perfect|bimod|2lev|comb|alpha21264}",
                &pred_type, /* default */"bimod",
                /* print */TRUE, /* format */NULL);
+
+  opt_reg_int_list(odb, "-bpred:alpha21264",
+                 "Alpha 21264 tournament predictor config "
+                 "(<local_hist_size> <pred_table_size> <hist_width> <choice_size>)",
+                 alpha21264_config, alpha21264_nelt, &alpha21264_nelt,
+                 /* default */alpha21264_config,
+                 /* print */TRUE, /* format */NULL, /* !accrue */FALSE);
 
   opt_reg_int_list(odb, "-bpred:bimod",
 		   "bimodal predictor config (<table size>)",
@@ -679,13 +686,6 @@ sim_reg_options(struct opt_odb_t *odb)
 		   comb_config, comb_nelt, &comb_nelt,
 		   /* default */comb_config,
 		   /* print */TRUE, /* format */NULL, /* !accrue */FALSE);
-
-  opt_reg_int_list(odb, "-bpred:alpha21264",
-                 "Alpha 21264 tournament predictor config "
-                 "(<local_hist_size> <pred_table_size> <hist_width> <choice_size>)",
-                 alpha21264_config, alpha21264_nelt, &alpha21264_nelt,
-                 /* default */alpha21264_config,
-                 /* print */TRUE, /* format */NULL, /* !accrue */FALSE);
 
   opt_reg_int(odb, "-bpred:ras",
               "return address stack size (0 for no return stack)",
@@ -1006,7 +1006,6 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
                         /* btb assoc */btb_config[1],
                         /* ret-addr stack size */ras_size);
   }
-
   else
     fatal("cannot parse predictor type `%s'", pred_type);
 

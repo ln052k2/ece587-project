@@ -78,7 +78,7 @@
 ##	Windows NT version 4.0, Cygnus CygWin/32 beta 19
 ##
 CC = gcc
-OFLAGS = -O0 -g -Wall
+OFLAGS = -O0 -g -Wall -fPIE -I.
 MFLAGS = `./sysprobe -flags`
 MLIBS  = `./sysprobe -libs` -lm
 ENDIAN = `./sysprobe -s`
@@ -285,16 +285,14 @@ SRCS =	main.c sim-fast.c sim-safe.c sim-cache.c sim-profile.c \
 	target-pisa/pisa.c target-pisa/loader.c target-pisa/syscall.c \
 	target-pisa/symbol.c \
 	target-alpha/alpha.c target-alpha/loader.c target-alpha/syscall.c \
-	target-alpha/symbol.c \
-	bpred-alpha21264.c
+	target-alpha/symbol.c
 
 HDRS =	syscall.h memory.h regs.h sim.h loader.h cache.h bpred.h ptrace.h \
 	eventq.h resource.h endian.h dlite.h symbol.h eval.h bitmap.h \
 	eio.h range.h version.h endian.h misc.h \
 	target-pisa/pisa.h target-pisa/pisabig.h target-pisa/pisalittle.h \
 	target-pisa/pisa.def target-pisa/ecoff.h \
-	target-alpha/alpha.h target-alpha/alpha.def target-alpha/ecoff.h \
-	bpred-alpha21264.h
+	target-alpha/alpha.h target-alpha/alpha.def target-alpha/ecoff.h
 
 #
 # common objects
@@ -314,7 +312,6 @@ PROGS = sim-fast$(EEXT) sim-safe$(EEXT) sim-eio$(EEXT) \
 #
 # all targets, NOTE: library ordering is important...
 #
-
 all: $(PROGS)
 	@echo "my work is done here..."
 
@@ -543,3 +540,5 @@ syscall.$(OEXT): syscall.h
 symbol.$(OEXT): host.h misc.h loader.h machine.h machine.def regs.h memory.h
 symbol.$(OEXT): options.h stats.h eval.h symbol.h target-alpha/ecoff.h
 symbol.$(OEXT): target-alpha/alpha.h
+
+.NOTPARALLEL: 
