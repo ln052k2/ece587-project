@@ -302,7 +302,8 @@ HDRS =	syscall.h memory.h regs.h sim.h loader.h cache.h bpred.h ptrace.h \
 OBJS =	main.$(OEXT) syscall.$(OEXT) memory.$(OEXT) regs.$(OEXT) \
 	loader.$(OEXT) endian.$(OEXT) dlite.$(OEXT) symbol.$(OEXT) \
 	eval.$(OEXT) options.$(OEXT) stats.$(OEXT) eio.$(OEXT) \
-	range.$(OEXT) misc.$(OEXT) machine.$(OEXT)
+	range.$(OEXT) misc.$(OEXT) machine.$(OEXT) \
+	bpred_alpha21264.$(OEXT)
 
 #
 # programs to build
@@ -544,3 +545,4 @@ symbol.$(OEXT): options.h stats.h eval.h symbol.h target-alpha/ecoff.h
 symbol.$(OEXT): target-alpha/alpha.h
 
 .NOTPARALLEL: 
+
