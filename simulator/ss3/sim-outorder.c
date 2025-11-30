@@ -219,6 +219,13 @@ static int res_fpalu;
 /* total number of floating point multiplier/dividers available */
 static int res_fpmult;
 
+/* Alpha 21264 predictor config (<local_size> <pred_table_size>
+   <hist_width> <choice_size>) */
+static int alpha21264_nelt = 4;
+static int alpha21264_config[4] =
+  { 1024, 1024, 10, 4096};
+
+
 /* text-based stat profiles */
 #define MAX_PCSTAT_VARS 8
 static int pcstat_nelt = 0;
@@ -650,9 +657,9 @@ sim_reg_options(struct opt_odb_t *odb)
                );
 
   opt_reg_string(odb, "-bpred",
-		 "branch predictor type {nottaken|taken|perfect|bimod|2lev|comb|alpha}",
-                 &pred_type, /* default */"bimod",
-                 /* print */TRUE, /* format */NULL);
+               "branch predictor type {nottaken|taken|perfect|bimod|2lev|comb|alpha21264}",
+               &pred_type, /* default */"bimod",
+               /* print */TRUE, /* format */NULL);
 
   opt_reg_int_list(odb, "-bpred:bimod",
 		   "bimodal predictor config (<table size>)",
@@ -672,6 +679,13 @@ sim_reg_options(struct opt_odb_t *odb)
 		   comb_config, comb_nelt, &comb_nelt,
 		   /* default */comb_config,
 		   /* print */TRUE, /* format */NULL, /* !accrue */FALSE);
+
+  opt_reg_int_list(odb, "-bpred:alpha21264",
+                 "Alpha 21264 tournament predictor config "
+                 "(<local_hist_size> <pred_table_size> <hist_width> <choice_size>)",
+                 alpha21264_config, alpha21264_nelt, &alpha21264_nelt,
+                 /* default */alpha21264_config,
+                 /* print */TRUE, /* format */NULL, /* !accrue */FALSE);
 
   opt_reg_int(odb, "-bpred:ras",
               "return address stack size (0 for no return stack)",
@@ -972,9 +986,26 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 			  /* btb assoc */btb_config[1],
 			  /* ret-addr stack size */ras_size);
     }
-  else if (!mystricmp(pred_type, "alpha"))
-    pred = bpred_create(BPredAlpha,
-                        0,0,0,0,0,0,0,0,0);
+  else if (!mystricmp(pred_type, "alpha21264"))
+  {
+    /* Alpha 21264 tournament predictor */
+    if (alpha21264_nelt != 4)
+      fatal("bad Alpha 21264 config "
+            "(<local_hist_size> <pred_table_size> <hist_width> <choice_size>)");
+    if (btb_nelt != 2)
+      fatal("bad btb config (<num_sets> <associativity>)");
+
+    pred = bpred_create(BPredAlpha21264,
+                        /* bimod table size */0,
+                        /* l1 size (local hist) */alpha21264_config[0],
+                        /* l2 size (pred tables) */alpha21264_config[1],
+                        /* meta table (choice) */alpha21264_config[3],
+                        /* history width */alpha21264_config[2],
+                        /* xor flag (unused) */0,
+                        /* btb sets */btb_config[0],
+                        /* btb assoc */btb_config[1],
+                        /* ret-addr stack size */ras_size);
+  }
 
   else
     fatal("cannot parse predictor type `%s'", pred_type);

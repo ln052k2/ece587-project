@@ -60,6 +60,7 @@
 #include "misc.h"
 #include "machine.h"
 #include "stats.h"
+#include "bpred-alpha21264.h"
 
 /*
  * This module implements a number of branch predictor mechanisms.  The
@@ -104,6 +105,7 @@ enum bpred_class {
   BPred2bit,			/* 2-bit saturating cntr pred (dir mapped) */
   BPredTaken,			/* static predict taken */
   BPredNotTaken,		/* static predict not taken */
+  BPredAlpha21264,              /* Alpha 21264 tournament predictor */
   BPred_NUM
 };
 
@@ -141,6 +143,7 @@ struct bpred_t {
     struct bpred_dir_t *bimod;	  /* first direction predictor */
     struct bpred_dir_t *twolev;	  /* second direction predictor */
     struct bpred_dir_t *meta;	  /* meta predictor */
+    struct bpred_alpha21264_t *alpha21264;  /* Alpha 21264 predictor */
   } dirpred;
 
   struct {
