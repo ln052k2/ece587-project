@@ -60,7 +60,7 @@
 #include "misc.h"
 #include "machine.h"
 #include "stats.h"
-#include "bpred-alpha21264.h"
+#include "bpred_alpha21264.h"
 
 /*
  * This module implements a number of branch predictor mechanisms.  The

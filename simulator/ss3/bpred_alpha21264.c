@@ -12,7 +12,7 @@
 #include "host.h"
 #include "misc.h"
 #include "machine.h"
-#include "bpred-alpha21264.h"
+#include "bpred_alpha21264.h"
 
 /* create an Alpha 21264 tournament predictor */
 struct bpred_alpha21264_t *         /* Alpha 21264 predictor instance */
