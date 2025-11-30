@@ -83,6 +83,11 @@ bpred_create(enum bpred_class class,	/* type of predictor to create */
   pred->class = class;
 
   switch (class) {
+  case BPredAlpha21264:
+    pred->dirpred.alpha21264 = 
+      bpred_alpha21264_create(l1size, l2size, shift_width, meta_size);
+    break;
+  
   case BPredComb:
     /* bimodal component */
     pred->dirpred.bimod = 
@@ -302,6 +307,13 @@ bpred_config(struct bpred_t *pred,	/* branch predictor instance */
 	     FILE *stream)		/* output stream */
 {
   switch (pred->class) {
+  case BPredAlpha21264:
+    bpred_alpha21264_config(pred->dirpred.alpha21264, "alpha21264", stream);
+    fprintf(stream, "btb: %d sets x %d associativity\n", 
+            pred->btb.sets, pred->btb.assoc);
+    fprintf(stream, "ret_stack: %d entries\n", pred->retstack.size);
+    break;
+
   case BPredComb:
     bpred_dir_config (pred->dirpred.bimod, "bimod", stream);
     bpred_dir_config (pred->dirpred.twolev, "2lev", stream);
@@ -358,6 +370,9 @@ bpred_reg_stats(struct bpred_t *pred,	/* branch predictor instance */
   /* get a name for this predictor */
   switch (pred->class)
     {
+    case BPredAlpha21264:
+      name = "bpred_alpha21264";
+      break;
     case BPredComb:
       name = "bpred_comb";
       break;
@@ -579,6 +594,13 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
   dir_update_ptr->pmeta = NULL;
   /* Except for jumps, get a pointer to direction-prediction bits */
   switch (pred->class) {
+    case BPredAlpha21264:
+      if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
+      {
+        dir_update_ptr->pdir1 = 
+          (char *)bpred_alpha21264_lookup(pred->dirpred.alpha21264, baddr);
+      }
+      break;
     case BPredComb:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
 	{
@@ -782,6 +804,12 @@ bpred_update(struct bpred_t *pred,	/* branch predictor instance */
       else
 	pred->used_bimod++;
     }
+  
+  if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND) &&
+    pred->class == BPredAlpha21264)
+  {
+    bpred_alpha21264_update(pred->dirpred.alpha21264, baddr, taken);
+  }
 
   /* keep stats about JR's; also, but don't change any bpred state for JR's
    * which are returns unless there's no retstack */
