@@ -13,3 +13,8 @@ The Alpha 21264 branch predictor uses 3 components:
     * 4K-entry table of 2-bit counters
 
 ALSO: a 2K-entry BTB (branch target buffer) for target addresses
+
+COMMAND:
+```
+./Run.pl   -db ./bench.db   -dir results/gcc1   -benchmark gcc   -sim <HOME_DIR>/simulator/ss3/sim-outorder   -args "-bpred alpha21264 -fastfwd 1000000 -max:inst 1000000" >& results/alpha.out
+```
