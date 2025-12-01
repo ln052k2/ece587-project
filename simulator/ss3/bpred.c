@@ -134,9 +134,6 @@ bpred_create(enum bpred_class class,	/* type of predictor to create */
 
   /* allocate ret-addr stack */
   switch (class) {
-  case BPredComb:
-  case BPred2Level:
-  case BPred2bit:
   case BPredAlpha21264:
     // -Project ///////////////////////////////////////////// Perceptron //////
   case BPredPerc:                   // Allocate BTB and retstack for perceptron as well 
@@ -162,16 +159,16 @@ bpred_create(enum bpred_class class,	/* type of predictor to create */
       pred->btb.assoc = btb_assoc;
 
       if (pred->btb.assoc > 1)
-	for (i=0; i < (pred->btb.assoc*pred->btb.sets); i++)
-	  {
-	    if (i % pred->btb.assoc != pred->btb.assoc - 1)
-	      pred->btb.btb_data[i].next = &pred->btb.btb_data[i+1];
-	    else
-	      pred->btb.btb_data[i].next = NULL;
-	    
-	    if (i % pred->btb.assoc != pred->btb.assoc - 1)
-	      pred->btb.btb_data[i+1].prev = &pred->btb.btb_data[i];
-	  }
+        for (i=0; i < (pred->btb.assoc*pred->btb.sets); i++)
+        {
+          if (i % pred->btb.assoc != pred->btb.assoc - 1)
+            pred->btb.btb_data[i].next = &pred->btb.btb_data[i+1];
+          else
+            pred->btb.btb_data[i].next = NULL;
+          
+          if (i % pred->btb.assoc != pred->btb.assoc - 1)
+            pred->btb.btb_data[i+1].prev = &pred->btb.btb_data[i];
+        }
 
       /* allocate retstack */
       if ((retstack_size & (retstack_size-1)) != 0)
