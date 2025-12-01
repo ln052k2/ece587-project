@@ -737,15 +737,6 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
   dir_update_ptr->pdir1 = NULL;
   dir_update_ptr->pdir2 = NULL;
   dir_update_ptr->pmeta = NULL;
-  /* Except for jumps, get a pointer to direction-prediction bits */
-  switch (pred->class) {
-    case BPredAlpha21264:
-      if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
-      {
-        dir_update_ptr->pdir1 = 
-          (char *)bpred_alpha21264_lookup(pred->dirpred.alpha21264, baddr);
-      }
-      break;
 
   /* Except for jumps, get a pointer to direction-prediction bits */
   switch (pred->class) {
@@ -786,7 +777,14 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
       
       break;
     /* ---------- END PERCEPTRON LOOKUP ------ */
-
+    case BPredAlpha21264:
+      if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
+      {
+        dir_update_ptr->pdir1 = 
+          (char *)bpred_alpha21264_lookup(pred->dirpred.alpha21264, baddr);
+      }
+      break;
+      
     case BPredComb:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
       {
@@ -842,7 +840,7 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
     default:
       panic("bogus predictor class");
   }
-}
+
 
   /*
    * We have a stateful predictor, and have gotten a pointer into the
