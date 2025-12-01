@@ -753,93 +753,96 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
     /* ---------- PERCEPTRON LOOKUP ---------- */
     case BPredPerc:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
-	{
-	  int hist = pred->dirpred.bimod->config.perc.history;
-	  int idx;
-	  int y;
-
-	  if (hist > MAX_HIST)
-	    hist = MAX_HIST;
-
-	  /* same index scheme as update */
-	 // idx = (baddr >> 2) % pred->dirpred.bimod->config.perc.weight_i;
-	 //
-
-idx = (((baddr >> 2) ^ (baddr >> 13) ^ (baddr >> 17))
-       & (pred->dirpred.bimod->config.perc.weight_i - 1));
-	  
-
-	  /* dot-product: bias + Σ (w_i * h_i) */
-	  y = pred->dirpred.bimod->config.perc.weight_table[idx][0]; /* bias */
-
-	  for (i = 1; i < hist; i++)
 	    {
-	      int x = pred->dirpred.bimod->config.perc.mask_table[i];
-	      if (x == 0) x = -1;
-	      y += pred->dirpred.bimod->config.perc.weight_table[idx][i] * x;
-	    }
+        int hist = pred->dirpred.bimod->config.perc.history;
+        int idx;
+        int y;
 
-	  /* stash output and index for update stage */
-	  pred->dirpred.bimod->config.perc.lookup_out = y;
-	  pred->dirpred.bimod->config.perc.i = idx;
-	}
+        if (hist > MAX_HIST)
+          hist = MAX_HIST;
+
+        /* same index scheme as update */
+        // idx = (baddr >> 2) % pred->dirpred.bimod->config.perc.weight_i;
+        //
+
+        idx = (((baddr >> 2) ^ (baddr >> 13) ^ (baddr >> 17))
+          & (pred->dirpred.bimod->config.perc.weight_i - 1));
+        
+
+        /* dot-product: bias + Σ (w_i * h_i) */
+        y = pred->dirpred.bimod->config.perc.weight_table[idx][0]; /* bias */
+
+        for (i = 1; i < hist; i++)
+          {
+            int x = pred->dirpred.bimod->config.perc.mask_table[i];
+            if (x == 0) x = -1;
+            y += pred->dirpred.bimod->config.perc.weight_table[idx][i] * x;
+          }
+
+        /* stash output and index for update stage */
+        pred->dirpred.bimod->config.perc.lookup_out = y;
+        pred->dirpred.bimod->config.perc.i = idx;
+      }
+      
       break;
     /* ---------- END PERCEPTRON LOOKUP ------ */
 
     case BPredComb:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
-	{
-	  char *bimod, *twolev, *meta;
-	  bimod = bpred_dir_lookup (pred->dirpred.bimod, baddr);
-	  twolev = bpred_dir_lookup (pred->dirpred.twolev, baddr);
-	  meta = bpred_dir_lookup (pred->dirpred.meta, baddr);
-	  dir_update_ptr->pmeta = meta;
-	  dir_update_ptr->dir.meta  = (*meta >= 2);
-	  dir_update_ptr->dir.bimod = (*bimod >= 2);
-	  dir_update_ptr->dir.twolev  = (*twolev >= 2);
-	  if (*meta >= 2)
-	    {
-	      dir_update_ptr->pdir1 = twolev;
-	      dir_update_ptr->pdir2 = bimod;
-	    }
-	  else
-	    {
-	      dir_update_ptr->pdir1 = bimod;
-	      dir_update_ptr->pdir2 = twolev;
-	    }
-	}
+      {
+        char *bimod, *twolev, *meta;
+        bimod = bpred_dir_lookup (pred->dirpred.bimod, baddr);
+        twolev = bpred_dir_lookup (pred->dirpred.twolev, baddr);
+        meta = bpred_dir_lookup (pred->dirpred.meta, baddr);
+        dir_update_ptr->pmeta = meta;
+        dir_update_ptr->dir.meta  = (*meta >= 2);
+        dir_update_ptr->dir.bimod = (*bimod >= 2);
+        dir_update_ptr->dir.twolev  = (*twolev >= 2);
+        if (*meta >= 2)
+          {
+            dir_update_ptr->pdir1 = twolev;
+            dir_update_ptr->pdir2 = bimod;
+          }
+        else
+          {
+            dir_update_ptr->pdir1 = bimod;
+            dir_update_ptr->pdir2 = twolev;
+          }
+      }
       break;
 
     case BPred2Level:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
-	{
-	  dir_update_ptr->pdir1 =
-	    bpred_dir_lookup (pred->dirpred.twolev, baddr);
-	}
+      {
+        dir_update_ptr->pdir1 =
+          bpred_dir_lookup (pred->dirpred.twolev, baddr);
+      }
       break;
 
     case BPred2bit:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
-	{
-	  dir_update_ptr->pdir1 =
-	    bpred_dir_lookup (pred->dirpred.bimod, baddr);
-	}
+      {
+        dir_update_ptr->pdir1 =
+          bpred_dir_lookup (pred->dirpred.bimod, baddr);
+      }
       break;
+    
     case BPredTaken:
       return btarget;
     case BPredNotTaken:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
-	{
-	  return baddr + sizeof(md_inst_t);
-	}
-      else
-	{
-	  return btarget;
-	}
+      {
+        return baddr + sizeof(md_inst_t);
+      }
+          else
+      {
+        return btarget;
+      }
 
     default:
       panic("bogus predictor class");
   }
+}
 
   /*
    * We have a stateful predictor, and have gotten a pointer into the
@@ -880,24 +883,24 @@ idx = (((baddr >> 2) ^ (baddr >> 13) ^ (baddr >> 17))
   index = (baddr >> MD_BR_SHIFT) & (pred->btb.sets - 1);
 
   if (pred->btb.assoc > 1)
-    {
-      index *= pred->btb.assoc;
+  {
+    index *= pred->btb.assoc;
 
       /* Now we know the set; look for a PC match */
-      for (i = index; i < (index+pred->btb.assoc) ; i++)
-	if (pred->btb.btb_data[i].addr == baddr)
-	  {
-	    /* match */
-	    pbtb = &pred->btb.btb_data[i];
-	    break;
-	  }
-    }	
+    for (i = index; i < (index+pred->btb.assoc) ; i++)
+      if (pred->btb.btb_data[i].addr == baddr)
+      {
+        /* match */
+        pbtb = &pred->btb.btb_data[i];
+        break;
+      }
+  }	
   else
-    {
-      pbtb = &pred->btb.btb_data[index];
-      if (pbtb->addr != baddr)
-	pbtb = NULL;
-    }
+  {
+    pbtb = &pred->btb.btb_data[index];
+    if (pbtb->addr != baddr)
+    pbtb = NULL;
+  }
 
   /*
    * We now also have a pointer into the BTB for a hit, or NULL otherwise
@@ -905,25 +908,25 @@ idx = (((baddr >> 2) ^ (baddr >> 13) ^ (baddr >> 17))
 
   /* if this is a jump, ignore predicted direction; we know it's taken. */
   if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) == (F_CTRL|F_UNCOND))
-    {
-      return (pbtb ? pbtb->target : 1);
-    }
+  {
+    return (pbtb ? pbtb->target : 1);
+  }
 
   /* otherwise we have a conditional branch */
   if (pbtb == NULL)
-    {
-      /* BTB miss -- just return a predicted direction */
-      return ((*(dir_update_ptr->pdir1) >= 2)
-	      ? /* taken */ 1
-	      : /* not taken */ 0);
-    }
+  {
+    /* BTB miss -- just return a predicted direction */
+    return ((*(dir_update_ptr->pdir1) >= 2)
+      ? /* taken */ 1
+      : /* not taken */ 0);
+  }
   else
-    {
-      /* BTB hit, so return target if it's a predicted-taken branch */
-      return ((*(dir_update_ptr->pdir1) >= 2)
-	      ? /* taken */ pbtb->target
-	      : /* not taken */ 0);
-    }
+  {
+    /* BTB hit, so return target if it's a predicted-taken branch */
+    return ((*(dir_update_ptr->pdir1) >= 2)
+      ? /* taken */ pbtb->target
+      : /* not taken */ 0);
+  }
 }
 
 /* Speculative execution can corrupt the ret-addr stack.  So for each
