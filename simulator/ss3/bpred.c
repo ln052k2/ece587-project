@@ -109,6 +109,16 @@ bpred_create(enum bpred_class class,	/* type of predictor to create */
 
     break;
 
+    // -Project ///////////////////////////////////////////// Perceptron //////
+    // BPredPerc: The Perceptron branch predictor utilizes a neural network approach 
+    // for dynamic branch prediction. It applies a perceptron learning algorithm, 
+    // leveraging a history of branch outcomes to make informed predictions.
+  case BPredPerc:
+    pred->dirpred.bimod = bpred_dir_create(class, l1size, l2size, shift_width, 0);
+
+    break;
+    // -Project ///////////////////////////////////////////// Perceptron //////
+    // The pereceptron predictor get those values from the _dir_create class which are assigned in bpred-sim and sim-outorder.c
   case BPred2bit:
     pred->dirpred.bimod = 
       bpred_dir_create(class, bimod_size, 0, 0, 0);
@@ -128,6 +138,13 @@ bpred_create(enum bpred_class class,	/* type of predictor to create */
   case BPred2Level:
   case BPred2bit:
   case BPredAlpha21264:
+    // -Project ///////////////////////////////////////////// Perceptron //////
+  case BPredPerc:                   // Allocate BTB and retstack for perceptron as well 
+    // -Project ///////////////////////////////////////////// Perceptron //////
+
+  case BPredComb:
+  case BPred2Level:
+  case BPred2bit:
     {
       int i;
 
@@ -256,6 +273,50 @@ bpred_dir_create (
       }
 
     break;
+    // -Project ///////////////////////////////////////////// Perceptron //////
+    // BPredPerc: In this function, the Perceptron predictor is initialized with 
+    // specific parameters, including the number of perceptrons, the size of weights, 
+    // and the history length. These parameters are needed for the predictor's 
+    // learning and decision-making process.
+    // Setting sanity checkers to make sure the perceptron predictor is initialized correctly
+    case BPredPerc:
+    {
+      int h;
+
+      if (!l1size)
+        fatal("perceptron: number of perceptrons `%d' must be positive", l1size);
+      if (!shift_width)
+        fatal("perceptron: history length `%d' must be positive", shift_width);
+
+      /* Clamp to internal array limits */
+      if (l1size > MAX_PERC)
+        l1size = MAX_PERC;
+      if (shift_width > MAX_HIST)
+        shift_width = MAX_HIST;
+
+      /* Map arguments to perceptron view. */
+      pred_dir->config.perc.weight_i    = l1size;
+      pred_dir->config.perc.weight_bits = l2size;
+      pred_dir->config.perc.history     = shift_width;
+      pred_dir->config.perc.lookup_out  = 0;
+      pred_dir->config.perc.i           = 0;
+
+       pred_dir->config.perc.max_weight =
+          (1 << (pred_dir->config.perc.weight_bits - 1)) - 1;
+
+      /* Initialize history to +1 (taken bias). */
+      for (h = 0; h < pred_dir->config.perc.history && h < MAX_HIST; h++)
+        pred_dir->config.perc.mask_table[h] = 1;
+
+      /* Optionally clear rest */
+      for (; h < MAX_HIST; h++)
+        pred_dir->config.perc.mask_table[h] = 0;
+
+      /* weight_table is already zeroed by calloc on bpred_dir_t. */
+      break;
+    }
+   
+    // -Project ///////////////////////////////////////////// Perceptron //////
 
   case BPredTaken:
   case BPredNotTaken:
@@ -277,6 +338,21 @@ bpred_dir_config(
   FILE *stream)			/* output stream */
 {
   switch (pred_dir->class) {
+  // -Project ///////////////////////////////////////////// Perceptron //////
+    // BPredPerc: This segment outputs the configuration of the Perceptron predictor, 
+    // detailing its key parameters including the number of perceptrons, weight bit size, 
+    // and history length. 
+
+  case BPredPerc:
+    fprintf(stream,
+            "pred_dir: %s: perceptron: %d entries, %d weight_bits, history=%d\n",
+            name,
+            pred_dir->config.perc.weight_i,
+            pred_dir->config.perc.weight_bits,
+            pred_dir->config.perc.history);
+    break;
+    // -Project ///////////////////////////////////////////// Perceptron //////
+
   case BPred2Level:
     fprintf(stream,
       "pred_dir: %s: 2-lvl: %d l1-sz, %d bits/ent, %s xor, %d l2-sz, direct-mapped\n",
@@ -315,6 +391,17 @@ bpred_config(struct bpred_t *pred,	/* branch predictor instance */
     fprintf(stream, "ret_stack: %d entries\n", pred->retstack.size);
     break;
 
+    // -Project ///////////////////////////////////////////// Perceptron //////
+// BPredPerc: Here, the predictor's statistical data is registered. This includes 
+// tracking the total number of lookups, updates, and hits. 
+   case BPredPerc:
+    bpred_dir_config(pred->dirpred.bimod, "perceptron", stream);
+    fprintf(stream, "btb: %d sets x %d associativity",
+            pred->btb.sets, pred->btb.assoc);
+    fprintf(stream, "ret_stack: %d entries", pred->retstack.size);
+    break;
+
+// -Project ///////////////////////////////////////////// Perceptron //////
   case BPredComb:
     bpred_dir_config (pred->dirpred.bimod, "bimod", stream);
     bpred_dir_config (pred->dirpred.twolev, "2lev", stream);
@@ -374,6 +461,11 @@ bpred_reg_stats(struct bpred_t *pred,	/* branch predictor instance */
     case BPredAlpha21264:
       name = "bpred_alpha21264";
       break;
+      // -Project ///////////////////////////////////////////// Perceptron //////
+    case BPredPerc:
+      name = "bpred_perc";
+      break;
+// -Project ///////////////////////////////////////////// Perceptron //////
     case BPredComb:
       name = "bpred_comb";
       break;
@@ -546,6 +638,58 @@ bpred_dir_lookup(struct bpred_dir_t *pred_dir,	/* branch dir predictor inst */
         p = &pred_dir->config.two.l2table[l2index];
       }
       break;
+      // -Project ///////////////////////////////////////////// Perceptron //////
+// Here we implement the way the look up works in the perceptron predictor.
+// This implementation is mimicing the way the perceptron predictor is implemented in the paper.
+
+
+
+// -Project ////////////////////////////////////////////////// Perceptron
+case BPredPerc:
+{
+    int idx, h;
+    int sum = 0;
+    int hist_len = pred_dir->config.perc.history;
+
+    /* Perceptron index: hash PC -> table entry */
+    idx = (baddr >> MD_BR_SHIFT) % pred_dir->config.perc.weight_i;
+    pred_dir->config.perc.i = idx;
+
+    /*
+     * Compute perceptron output:
+     * y = w0 (bias) + sum( wi * xi )
+     * where xi = ±1 history bits
+     */
+
+    /* Add bias weight (weight 0) multiplied by constant +1 */
+    sum = pred_dir->config.perc.weight_table[idx][0];
+
+    /* Dot product for remaining history bits */
+    for (h = 1; h < hist_len; h++)
+    {
+        int x = pred_dir->config.perc.mask_table[h];
+        if (x == 0) x = -1;       // encode history as ±1
+
+        sum += pred_dir->config.perc.weight_table[idx][h] * x;
+    }
+
+    /* Store perceptron output for update() */
+    pred_dir->config.perc.lookup_out = sum;
+
+    /*
+     * Return a non-null pointer to keep interface consistent.
+     * Not actually used by perceptron predictor.
+     */
+    p = (unsigned char *)&pred_dir->config.perc.weight_table[idx][0];
+}
+break;
+// -Project ////////////////////////////////////////////////// Perceptron
+
+
+
+
+
+// -Project ///////////////////////////////////////////// Perceptron //////
     case BPred2bit:
       p = &pred_dir->config.bimod.table[BIMOD_HASH(pred_dir, baddr)];
       break;
@@ -602,6 +746,46 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
           (char *)bpred_alpha21264_lookup(pred->dirpred.alpha21264, baddr);
       }
       break;
+
+  /* Except for jumps, get a pointer to direction-prediction bits */
+  switch (pred->class) {
+
+    /* ---------- PERCEPTRON LOOKUP ---------- */
+    case BPredPerc:
+      if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
+	{
+	  int hist = pred->dirpred.bimod->config.perc.history;
+	  int idx;
+	  int y;
+
+	  if (hist > MAX_HIST)
+	    hist = MAX_HIST;
+
+	  /* same index scheme as update */
+	 // idx = (baddr >> 2) % pred->dirpred.bimod->config.perc.weight_i;
+	 //
+
+idx = (((baddr >> 2) ^ (baddr >> 13) ^ (baddr >> 17))
+       & (pred->dirpred.bimod->config.perc.weight_i - 1));
+	  
+
+	  /* dot-product: bias + Σ (w_i * h_i) */
+	  y = pred->dirpred.bimod->config.perc.weight_table[idx][0]; /* bias */
+
+	  for (i = 1; i < hist; i++)
+	    {
+	      int x = pred->dirpred.bimod->config.perc.mask_table[i];
+	      if (x == 0) x = -1;
+	      y += pred->dirpred.bimod->config.perc.weight_table[idx][i] * x;
+	    }
+
+	  /* stash output and index for update stage */
+	  pred->dirpred.bimod->config.perc.lookup_out = y;
+	  pred->dirpred.bimod->config.perc.i = idx;
+	}
+      break;
+    /* ---------- END PERCEPTRON LOOKUP ------ */
+
     case BPredComb:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
 	{
@@ -625,6 +809,7 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
 	    }
 	}
       break;
+
     case BPred2Level:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
 	{
@@ -632,6 +817,7 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
 	    bpred_dir_lookup (pred->dirpred.twolev, baddr);
 	}
       break;
+
     case BPred2bit:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
 	{
@@ -650,6 +836,7 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
 	{
 	  return btarget;
 	}
+
     default:
       panic("bogus predictor class");
   }
@@ -999,6 +1186,128 @@ bpred_update(struct bpred_t *pred,	/* branch predictor instance */
         }
         }
     }
+  /* ---------- PERCEPTRON UPDATE SEPARATED FROM BIMODAL ---------- */
+  if (pred->class == BPredPerc)
+    {
+      int idx;
+      int t = taken ? +1 : -1;
+      int y = pred->dirpred.bimod->config.perc.lookup_out;
+      int hist = pred->dirpred.bimod->config.perc.history;
+      int MAXW = pred->dirpred.bimod->config.perc.max_weight;
+
+      if (hist > MAX_HIST)
+	hist = MAX_HIST;
+
+      /* index recomputed (same as lookup) */
+     // idx = (baddr >> 2) % pred->dirpred.bimod->config.perc.weight_i;
+     //
+
+idx = (((baddr >> 2) ^ (baddr >> 13) ^ (baddr >> 17))
+       & (pred->dirpred.bimod->config.perc.weight_i - 1));
+      
+
+      {
+	int abs_y = (y < 0 ? -y : y);
+	int theta = (int)(1.93 * hist) + 14;
+
+/* Extra stabilization for large histories */
+if (hist > 32)
+    theta += hist / 4;
+
+	if ((t * y) <= 0 || abs_y <= theta)
+	  {
+	    /* bias weight w0 */
+	    int w0 = pred->dirpred.bimod->config.perc.weight_table[idx][0];
+	    w0 += t;
+	    if (w0 > MAXW)  w0 = MAXW;
+	    if (w0 < -MAXW) w0 = -MAXW;
+	    pred->dirpred.bimod->config.perc.weight_table[idx][0] = w0;
+
+	    /* other weights */
+	    for (i = 1; i < hist; i++)
+	      {
+		int x = pred->dirpred.bimod->config.perc.mask_table[i];
+		if (x == 0) x = -1;
+		int w = pred->dirpred.bimod->config.perc.weight_table[idx][i];
+
+		w += (t == x) ? 1 : -1;
+
+		if (w > MAXW)  w = MAXW;
+		if (w < -MAXW) w = -MAXW;
+
+		pred->dirpred.bimod->config.perc.weight_table[idx][i] = w;
+	      }
+	  }
+      }
+
+      /* history shift */
+     
+
+/* Correct history shift: move older to the front */
+for (i = 0; i < hist - 1; i++)
+    pred->dirpred.bimod->config.perc.mask_table[i] =
+        pred->dirpred.bimod->config.perc.mask_table[i + 1];
+
+/* Insert newest outcome at the END */
+pred->dirpred.bimod->config.perc.mask_table[hist - 1] =
+    (taken ? +1 : -1);
+
+
+      /* do NOT touch bimodal counters; done for this branch */
+      return;
+    }
+  /* ---------- END PERCEPTRON UPDATE ----------------------------- */
+
+  /* update state (but not for jumps) */
+  if (dir_update_ptr->pdir1)
+    {
+      if (taken)
+	{
+	  if (*dir_update_ptr->pdir1 < 3)
+	    ++*dir_update_ptr->pdir1;
+	}
+      else
+	{ /* not taken */
+	  if (*dir_update_ptr->pdir1 > 0)
+	    --*dir_update_ptr->pdir1;
+	}
+    }
+
+  /* combining predictor also updates second predictor and meta predictor */
+  /* second direction predictor */
+  if (dir_update_ptr->pdir2)
+    {
+      if (taken)
+	{
+	  if (*dir_update_ptr->pdir2 < 3)
+	    ++*dir_update_ptr->pdir2;
+	}
+      else
+	{ /* not taken */
+	  if (*dir_update_ptr->pdir2 > 0)
+	    --*dir_update_ptr->pdir2;
+	}
+    }
+
+  /* meta predictor */
+  if (dir_update_ptr->pmeta)
+    {
+      if (dir_update_ptr->dir.bimod != dir_update_ptr->dir.twolev)
+	{
+	  /* we only update meta predictor if directions were different */
+	  if (dir_update_ptr->dir.twolev == (unsigned int)taken)
+	    {
+	      /* 2-level predictor was correct */
+	      if (*dir_update_ptr->pmeta < 3)
+		++*dir_update_ptr->pmeta;
+	    }
+	  else
+	    {
+	      /* bimodal predictor was correct */
+	      if (*dir_update_ptr->pmeta > 0)
+		--*dir_update_ptr->pmeta;
+	    }
+	}
     }
 
   /* update BTB (but only for taken branches) */
@@ -1021,3 +1330,4 @@ bpred_update(struct bpred_t *pred,	/* branch predictor instance */
 	}
     }
 }
+

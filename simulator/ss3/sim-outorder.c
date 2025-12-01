@@ -128,6 +128,18 @@ static int comb_nelt = 1;
 static int comb_config[1] =
   { /* meta_table_size */1024 };
 
+// -Project ///////////////////////////////////////////// Perceptron //////
+/* Perceptron predictor config (<l1size> <ll2size> <shift_width>) */
+static int perceptron_nelt = 3;
+static int perceptron_config[3] =
+  {
+  128,          /* Index size weight */
+  8,            /* Number of BHR history bits (1 bit for the sign + 7 (for 2^7 = 128) = 8 bits)*/ 
+  27            /* history */
+  };
+
+// -Project ///////////////////////////////////////////// Perceptron //////
+
 /* return address stack (RAS) size */
 static int ras_size = 8;
 
@@ -686,6 +698,18 @@ sim_reg_options(struct opt_odb_t *odb)
 		   comb_config, comb_nelt, &comb_nelt,
 		   /* default */comb_config,
 		   /* print */TRUE, /* format */NULL, /* !accrue */FALSE);
+  // -Project ///////////////////////////////////////////// Perceptron //////
+  opt_reg_int_list(
+    odb,
+     "-bpred:perceptron",
+		   "perceptron predictor config (<table size>)",
+		   perceptron_config, perceptron_nelt, &perceptron_nelt,
+		   /* default */perceptron_config,
+		   /* print */TRUE,
+       /* format */NULL,
+       /* !accrue */FALSE);
+       
+// -Project ///////////////////////////////////////////// Perceptron //////
 
   opt_reg_int(odb, "-bpred:ras",
               "return address stack size (0 for no return stack)",
@@ -1006,6 +1030,22 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
                         /* btb assoc */btb_config[1],
                         /* ret-addr stack size */ras_size);
   }
+    // -Project ///////////////////////////////////////////// Perceptron //////
+// This is similar to the BpredComb but with a perceptron predictor
+  else if (!mystricmp(pred_type, "perceptron"))
+  {
+    pred = bpred_create(BPredPerc,
+			  0,                      /* bimod table size */ 
+			  perceptron_config[0],   /* 2lev l1 size */
+			  perceptron_config[1],   /* 2lev l2 size */
+			  0,                      /* meta table size */
+			  perceptron_config[2],   /* history reg size */
+			  0,                      /* history xor address */
+			  btb_config[0],          /* btb sets */
+			  btb_config[1],          /* btb assoc */
+			  ras_size);              /* ret-addr stack size */
+  }
+// -Project ///////////////////////////////////////////// Perceptron //////
   else
     fatal("cannot parse predictor type `%s'", pred_type);
 

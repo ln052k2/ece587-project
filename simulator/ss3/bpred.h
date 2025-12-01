@@ -62,6 +62,9 @@
 #include "stats.h"
 #include "bpred_alpha21264.h"
 
+#define MAX_PERC 2048
+#define MAX_HIST 64
+
 /*
  * This module implements a number of branch predictor mechanisms.  The
  * following predictors are supported:
@@ -101,6 +104,14 @@
 /* branch predictor types */
 enum bpred_class {
   BPredComb,                    /* combined predictor (McFarling) */
+ // -Project ///////////////////////////////////////////// Perceptron //////
+  // BPredPerc: The Perceptron branch predictor utilizes a neural network approach 
+  // for dynamic branch prediction. It applies a perceptron learning algorithm, 
+  // leveraging a history of branch outcomes to make informed predictions. This
+  // predictor is characterized by its adaptability and potential for high 
+  // accuracy in complex branching scenarios.
+  BPredPerc,	
+  // -Project ///////////////////////////////////////////// Perceptron //////
   BPred2Level,			/* 2-level correlating pred w/2-bit counters */
   BPred2bit,			/* 2-bit saturating cntr pred (dir mapped) */
   BPredTaken,			/* static predict taken */
@@ -121,6 +132,23 @@ struct bpred_btb_ent_t {
 struct bpred_dir_t {
   enum bpred_class class;	/* type of predictor */
   union {
+    // -Project ///////////////////////////////////////////// Perceptron //////
+  // Structure 'perc': Defines the perceptron predictor's internal mechanism.
+  // It includes the perceptron's weight table, which maps various branch history 
+  // patterns to their corresponding weights, and a mask table used to select certain history bits.
+  // This structure is pivotal for the perceptron algorithm's learning and prediction processes.
+    struct{
+      int weight_i;		                    /* weightt indices */
+      int weight_bits;	                  /* weight bits */
+      int history;		                    /* history length for global history */ 
+      int lookup_out;		                  /* output of each lookup*/  
+       int max_weight;                      /* NEW: saturation limit */ 
+      signed int weight_table[MAX_PERC][MAX_HIST];	/* weight table, 2 dimensional array with an arbitrary large number to accomodate multiple scenarios */ 
+      signed int mask_table[MAX_HIST];         /* masks table */
+      int i;		                          /* index */   
+    } perc;
+  // -Project ///////////////////////////////////////////// Perceptron //////
+
     struct {
       unsigned int size;	/* number of entries in direct-mapped table */
       unsigned char *table;	/* prediction state table */
