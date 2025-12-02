@@ -286,7 +286,7 @@ SRCS =	main.c sim-fast.c sim-safe.c sim-cache.c sim-profile.c \
 	target-pisa/symbol.c \
 	target-alpha/alpha.c target-alpha/loader.c target-alpha/syscall.c \
 	target-alpha/symbol.c \
-	bpred_alpha21264.c
+	bpred_alpha21264.c bpred_perceptron.c
 
 HDRS =	syscall.h memory.h regs.h sim.h loader.h cache.h bpred.h ptrace.h \
 	eventq.h resource.h endian.h dlite.h symbol.h eval.h bitmap.h \
@@ -294,7 +294,7 @@ HDRS =	syscall.h memory.h regs.h sim.h loader.h cache.h bpred.h ptrace.h \
 	target-pisa/pisa.h target-pisa/pisabig.h target-pisa/pisalittle.h \
 	target-pisa/pisa.def target-pisa/ecoff.h \
 	target-alpha/alpha.h target-alpha/alpha.def target-alpha/ecoff.h \
-	bpred_alpha21264.h
+	bpred_alpha21264.h bpred_perceptron.h
 
 #
 # common objects
@@ -303,7 +303,7 @@ OBJS =	main.$(OEXT) syscall.$(OEXT) memory.$(OEXT) regs.$(OEXT) \
 	loader.$(OEXT) endian.$(OEXT) dlite.$(OEXT) symbol.$(OEXT) \
 	eval.$(OEXT) options.$(OEXT) stats.$(OEXT) eio.$(OEXT) \
 	range.$(OEXT) misc.$(OEXT) machine.$(OEXT) \
-	bpred_alpha21264.$(OEXT)
+	bpred_alpha21264.$(OEXT) bpred_perceptron.$(OEXT)
 
 #
 # programs to build
