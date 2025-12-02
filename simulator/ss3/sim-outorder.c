@@ -668,8 +668,8 @@ sim_reg_options(struct opt_odb_t *odb)
                );
 
 
-  opt_reg_string(odb, "-bpred",
-               "branch predictor type {nottaken|taken|perfect|bimod|2lev|comb|alpha21264}",
+opt_reg_string(odb, "-bpred",
+               "branch predictor type {nottaken|taken|perfect|bimod|2lev|comb|perceptron|alpha21264}",
                &pred_type, /* default */"bimod",
                /* print */TRUE, /* format */NULL);
 
@@ -701,13 +701,13 @@ sim_reg_options(struct opt_odb_t *odb)
   // -Project ///////////////////////////////////////////// Perceptron //////
   opt_reg_int_list(
     odb,
-     "-bpred:perceptron",
-		   "perceptron predictor config (<table size>)",
-		   perceptron_config, perceptron_nelt, &perceptron_nelt,
-		   /* default */perceptron_config,
-		   /* print */TRUE,
-       /* format */NULL,
-       /* !accrue */FALSE);
+    "-bpred:perceptron",
+    "perceptron predictor config (<num_perceptrons> <weight_bits> <history_length>)",
+    perceptron_config, perceptron_nelt, &perceptron_nelt,
+    /* default */perceptron_config,
+    /* print */TRUE,
+    /* format */NULL,
+    /* !accrue */FALSE);
        
 // -Project ///////////////////////////////////////////// Perceptron //////
 
@@ -1032,20 +1032,47 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
   }
     // -Project ///////////////////////////////////////////// Perceptron //////
 // This is similar to the BpredComb but with a perceptron predictor
-  else if (!mystricmp(pred_type, "perceptron"))
+else if (!mystricmp(pred_type, "perceptron"))
   {
+    /* Perceptron predictor */
+    if (perceptron_nelt != 3)
+      fatal("bad perceptron predictor config (<num_perceptrons> <weight_bits> <history_length>)");
+    if (btb_nelt != 2)
+      fatal("bad btb config (<num_sets> <associativity>)");
+
+    /* Validate perceptron parameters */
+    if (perceptron_config[0] < 1 || perceptron_config[0] > 8192)
+      fatal("perceptron: num_perceptrons must be between 1 and 8192, got %d", 
+            perceptron_config[0]);
+    if (perceptron_config[1] < 6 || perceptron_config[1] > 10)
+      fatal("perceptron: weight_bits must be between 6 and 10, got %d", 
+            perceptron_config[1]);
+    if (perceptron_config[2] < 1 || perceptron_config[2] > 256)
+      fatal("perceptron: history_length must be between 1 and 256, got %d", 
+            perceptron_config[2]);
+
+    /* Create perceptron predictor
+     * Parameters for bpred_create():
+     *   class = BPredPerc
+     *   bimod_size = 0 (unused)
+     *   l1size = num_perceptrons (perceptron_config[0])
+     *   l2size = weight_bits (perceptron_config[1])
+     *   meta_size = 0 (unused)
+     *   shift_width = history_length (perceptron_config[2])
+     *   xor = 0 (unused)
+     *   btb_sets, btb_assoc, ras_size (standard)
+     */
     pred = bpred_create(BPredPerc,
-			  0,                      /* bimod table size */ 
-			  perceptron_config[0],   /* 2lev l1 size */
-			  perceptron_config[1],   /* 2lev l2 size */
-			  0,                      /* meta table size */
-			  perceptron_config[2],   /* history reg size */
-			  0,                      /* history xor address */
-			  btb_config[0],          /* btb sets */
-			  btb_config[1],          /* btb assoc */
-			  ras_size);              /* ret-addr stack size */
+                        0,                        /* bimod_size (unused) */
+                        perceptron_config[0],     /* l1size = num_perceptrons */
+                        perceptron_config[1],     /* l2size = weight_bits */
+                        0,                        /* meta_size (unused) */
+                        perceptron_config[2],     /* shift_width = history_length */
+                        0,                        /* xor (unused) */
+                        btb_config[0],            /* btb sets */
+                        btb_config[1],            /* btb assoc */
+                        ras_size);                /* ret-addr stack size */
   }
-// -Project ///////////////////////////////////////////// Perceptron //////
   else
     fatal("cannot parse predictor type `%s'", pred_type);
 
