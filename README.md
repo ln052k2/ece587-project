@@ -1,8 +1,6 @@
 # Overview
 This project adds two new branch predictors to the SimpleScalar simulator: the Alpha 21264 tournament predictor and perceptron branch predictor.
 
-=======
->>>>>>> integration
 # Alpha 21264 Tournament Predictor Overview
 The Alpha 21264 branch predictor uses 3 components:
 1. Local predictor - predicts based on recent branch behavior
