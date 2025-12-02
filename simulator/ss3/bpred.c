@@ -740,38 +740,39 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
 
     /* ---------- PERCEPTRON LOOKUP ---------- */
     case BPredPerc:
-      if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
-	    {
+         if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
+      {
         int hist = pred->dirpred.bimod->config.perc.history;
         int idx;
         int y;
+        static unsigned char perc_dir;  /* pseudo 2-bit counter */
 
         if (hist > MAX_HIST)
           hist = MAX_HIST;
 
         /* same index scheme as update */
-        // idx = (baddr >> 2) % pred->dirpred.bimod->config.perc.weight_i;
-        //
-
         idx = (((baddr >> 2) ^ (baddr >> 13) ^ (baddr >> 17))
-          & (pred->dirpred.bimod->config.perc.weight_i - 1));
-        
+               & (pred->dirpred.bimod->config.perc.weight_i - 1));
 
         /* dot-product: bias + Σ (w_i * h_i) */
         y = pred->dirpred.bimod->config.perc.weight_table[idx][0]; /* bias */
 
         for (i = 1; i < hist; i++)
-          {
-            int x = pred->dirpred.bimod->config.perc.mask_table[i];
-            if (x == 0) x = -1;
-            y += pred->dirpred.bimod->config.perc.weight_table[idx][i] * x;
-          }
+        {
+          int x = pred->dirpred.bimod->config.perc.mask_table[i];
+          if (x == 0) x = -1;
+          y += pred->dirpred.bimod->config.perc.weight_table[idx][i] * x;
+        }
 
         /* stash output and index for update stage */
         pred->dirpred.bimod->config.perc.lookup_out = y;
         pred->dirpred.bimod->config.perc.i = idx;
-      }
-      
+
+        /* Map perceptron output to generic 2-bit-style decision.
+           Generic code later uses (*(pdir1) >= 2) as "taken". */
+        perc_dir = (y >= 0) ? 3 : 0;          /* 3 = strongly taken, 0 = strongly not */
+        dir_update_ptr->pdir1 = (char *)&perc_dir;
+      }        
       break;
     /* ---------- END PERCEPTRON LOOKUP ------ */
     case BPredAlpha21264:
