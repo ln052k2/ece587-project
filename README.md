@@ -28,20 +28,22 @@ The perceptron branch predictor replaces the typical 2-bit saturating counters i
 Each perceptron corresponds to one static branch, and stores a vector of signed integer weights, one per global history bit. Perceptrons are stored in a perceptron table, and indexed by PC just like in gshare. 
 
 There is one global history register (GHR) for all branches, and every branch uses this same GHR as inputs to its perceptron. Each bit in the GHR is an encoded input for the branch's corresponding perceptron.
-GHR: (older)  T  N  N  T  T  …  (newest)
-x[i]: (older) +1  -1  -1  +1  +1  … (newest)
+* GHR: (older)  T  N  N  T  T  …  (newest)
+* x[i]: (older) +1  -1  -1  +1  +1  … (newest)
 
 For history length N, each perceptron stores N+1 weights:
 * w0 = bias weight
 * w1...wN = correlation weights for history bits x1...xN
 
 The prediction is made by computing the dot product between the global history bits (encoded +/- 1 depending on taken/not taken), and the weights in that branch's weight vector.
-```y = w0 + sum(x[i] * w[i])```
+* y = w0 + sum(x[i] * w[i])
+
 Based on this dot product, if y is under 0, then it is not taken. Otherwise, it predicts as taken. The magnitude of y is confidence. 
 
 Weights w[i] are initialized to 0, and are learned over time. Training adjusts the weights of only the perceptron belonging to that branch. The update rule is 
 * w[i] = w[i] + t*x[i]
 * w0 = w0 + t
+
 Where:
 * t = +1 if actual outcome was taken
 * t = -1 if actual outcome was not taken
