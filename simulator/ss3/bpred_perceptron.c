@@ -84,9 +84,30 @@ char *
 bpred_perceptron_lookup(struct bpred_perceptron_t *pred_perc,
                         md_addr_t baddr)
 {
+  static int lookup_count = 0;
   int idx, h;
   int sum = 0;
-  int hist_len = pred_perc->history;
+  int hist_len;
+
+  /* DEBUG - first few lookups */
+  if (lookup_count < 3) {
+    fprintf(stderr, "LOOKUP #%d called, pred_perc=%p\n", lookup_count, (void*)pred_perc);
+    lookup_count++;
+  }
+
+  /* Check for NULL */
+  if (!pred_perc) {
+    fprintf(stderr, "ERROR: pred_perc is NULL in lookup!\n");
+    abort();
+  }
+
+  hist_len = pred_perc->history;
+  
+  /* DEBUG - first few lookups */
+  if (lookup_count <= 3) {
+    fprintf(stderr, "  baddr=0x%lx, hist_len=%d, weight_i=%d\n", 
+            (unsigned long)baddr, hist_len, pred_perc->weight_i);
+  }
 
   /* Hash the branch address to select a perceptron
    * Use multiple address bits to reduce aliasing
