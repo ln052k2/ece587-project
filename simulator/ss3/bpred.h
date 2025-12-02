@@ -137,18 +137,6 @@ struct bpred_dir_t {
   // It includes the perceptron's weight table, which maps various branch history 
   // patterns to their corresponding weights, and a mask table used to select certain history bits.
   // This structure is pivotal for the perceptron algorithm's learning and prediction processes.
-    struct{
-      int weight_i;		                    /* weightt indices */
-      int weight_bits;	                  /* weight bits */
-      int history;		                    /* history length for global history */ 
-      int lookup_out;		                  /* output of each lookup*/  
-       int max_weight;                      /* NEW: saturation limit */ 
-      signed int weight_table[MAX_PERC][MAX_HIST];	/* weight table, 2 dimensional array with an arbitrary large number to accomodate multiple scenarios */ 
-      signed int mask_table[MAX_HIST];         /* masks table */
-      int i;		                          /* index */   
-    } perc;
-  // -Project ///////////////////////////////////////////// Perceptron //////
-
     struct {
       unsigned int size;	/* number of entries in direct-mapped table */
       unsigned char *table;	/* prediction state table */
@@ -162,6 +150,8 @@ struct bpred_dir_t {
       unsigned char *l2table;	/* level-2 prediction state table */
     } two;
   } config;
+
+  struct bpred_perceptron_t *perc;  /* NEW: pointer to perceptron predictor */
 };
 
 /* branch predictor def */

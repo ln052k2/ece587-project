@@ -109,16 +109,15 @@ bpred_create(enum bpred_class class,	/* type of predictor to create */
 
     break;
 
-    // -Project ///////////////////////////////////////////// Perceptron //////
-    // BPredPerc: The Perceptron branch predictor utilizes a neural network approach 
-    // for dynamic branch prediction. It applies a perceptron learning algorithm, 
-    // leveraging a history of branch outcomes to make informed predictions.
   case BPredPerc:
+    /* Creates a direction predictor with perceptron configuration
+     * l1size = number of perceptrons
+     * l2size = weight bits
+     * shift_width = history length
+     */
     pred->dirpred.bimod = bpred_dir_create(class, l1size, l2size, shift_width, 0);
-
     break;
-    // -Project ///////////////////////////////////////////// Perceptron //////
-    // The pereceptron predictor get those values from the _dir_create class which are assigned in bpred-sim and sim-outorder.c
+
   case BPred2bit:
     pred->dirpred.bimod = 
       bpred_dir_create(class, bimod_size, 0, 0, 0);
@@ -213,50 +212,47 @@ bpred_dir_create (
     fatal("out of virtual memory");
 
   pred_dir->class = class;
+  pred_dir->perc = NULL; // perceptrons are NULL for all predictors that AREN'T Perceptron
 
   cnt = -1;
   switch (class) {
   case BPred2Level:
+  {
+    if (!l1size || (l1size & (l1size-1)) != 0)
+      fatal("level-1 size, `%d', must be non-zero and a power of two", l1size);
+        pred_dir->config.two.l1size = l1size;
+    
+    if (!l2size || (l2size & (l2size-1)) != 0)
+      fatal("level-2 size, `%d', must be non-zero and a power of two", l2size);
+    pred_dir->config.two.l2size = l2size;
+    
+    if (!shift_width || shift_width > 30)
+      fatal("shift register width, `%d', must be non-zero and positive", shift_width);
+    pred_dir->config.two.shift_width = shift_width;
+    
+    pred_dir->config.two.xor = xor;
+    pred_dir->config.two.shiftregs = calloc(l1size, sizeof(int));
+    if (!pred_dir->config.two.shiftregs)
+      fatal("cannot allocate shift register table");
+    
+    pred_dir->config.two.l2table = calloc(l2size, sizeof(unsigned char));
+    if (!pred_dir->config.two.l2table)
+      fatal("cannot allocate second level table");
+
+    /* initialize counters to weakly this-or-that */
+    flipflop = 1;
+    for (cnt = 0; cnt < l2size; cnt++)
     {
-      if (!l1size || (l1size & (l1size-1)) != 0)
-	fatal("level-1 size, `%d', must be non-zero and a power of two", 
-	      l1size);
-      pred_dir->config.two.l1size = l1size;
-      
-      if (!l2size || (l2size & (l2size-1)) != 0)
-	fatal("level-2 size, `%d', must be non-zero and a power of two", 
-	      l2size);
-      pred_dir->config.two.l2size = l2size;
-      
-      if (!shift_width || shift_width > 30)
-	fatal("shift register width, `%d', must be non-zero and positive",
-	      shift_width);
-      pred_dir->config.two.shift_width = shift_width;
-      
-      pred_dir->config.two.xor = xor;
-      pred_dir->config.two.shiftregs = calloc(l1size, sizeof(int));
-      if (!pred_dir->config.two.shiftregs)
-	fatal("cannot allocate shift register table");
-      
-      pred_dir->config.two.l2table = calloc(l2size, sizeof(unsigned char));
-      if (!pred_dir->config.two.l2table)
-	fatal("cannot allocate second level table");
-
-      /* initialize counters to weakly this-or-that */
-      flipflop = 1;
-      for (cnt = 0; cnt < l2size; cnt++)
-	{
-	  pred_dir->config.two.l2table[cnt] = flipflop;
-	  flipflop = 3 - flipflop;
-	}
-
-      break;
+      pred_dir->config.two.l2table[cnt] = flipflop;
+      flipflop = 3 - flipflop;
     }
+
+    break;
+  }
 
   case BPred2bit:
     if (!l1size || (l1size & (l1size-1)) != 0)
-      fatal("2bit table size, `%d', must be non-zero and a power of two", 
-	    l1size);
+      fatal("2bit table size, `%d', must be non-zero and a power of two", l1size);
     pred_dir->config.bimod.size = l1size;
     if (!(pred_dir->config.bimod.table =
 	  calloc(l1size, sizeof(unsigned char))))
@@ -264,57 +260,27 @@ bpred_dir_create (
     /* initialize counters to weakly this-or-that */
     flipflop = 1;
     for (cnt = 0; cnt < l1size; cnt++)
-      {
-	pred_dir->config.bimod.table[cnt] = flipflop;
-	flipflop = 3 - flipflop;
-      }
+    { 
+      pred_dir->config.bimod.table[cnt] = flipflop;
+      flipflop = 3 - flipflop;
+    }
 
     break;
-    // -Project ///////////////////////////////////////////// Perceptron //////
-    // BPredPerc: In this function, the Perceptron predictor is initialized with 
-    // specific parameters, including the number of perceptrons, the size of weights, 
-    // and the history length. These parameters are needed for the predictor's 
-    // learning and decision-making process.
-    // Setting sanity checkers to make sure the perceptron predictor is initialized correctly
+
     case BPredPerc:
     {
-      int h;
-
-      if (!l1size)
-        fatal("perceptron: number of perceptrons `%d' must be positive", l1size);
-      if (!shift_width)
-        fatal("perceptron: history length `%d' must be positive", shift_width);
-
-      /* Clamp to internal array limits */
-      if (l1size > MAX_PERC)
-        l1size = MAX_PERC;
-      if (shift_width > MAX_HIST)
-        shift_width = MAX_HIST;
-
-      /* Map arguments to perceptron view. */
-      pred_dir->config.perc.weight_i    = l1size;
-      pred_dir->config.perc.weight_bits = l2size;
-      pred_dir->config.perc.history     = shift_width;
-      pred_dir->config.perc.lookup_out  = 0;
-      pred_dir->config.perc.i           = 0;
-
-       pred_dir->config.perc.max_weight =
-          (1 << (pred_dir->config.perc.weight_bits - 1)) - 1;
-
-      /* Initialize history to +1 (taken bias). */
-      for (h = 0; h < pred_dir->config.perc.history && h < MAX_HIST; h++)
-        pred_dir->config.perc.mask_table[h] = 1;
-
-      /* Optionally clear rest */
-      for (; h < MAX_HIST; h++)
-        pred_dir->config.perc.mask_table[h] = 0;
-
-      /* weight_table is already zeroed by calloc on bpred_dir_t. */
+      /* Delegate to perceptron module
+       * Parameters mapping:
+       *   l1size = number of perceptrons in table
+       *   l2size = bits per weight (for max_weight calculation)
+       *   shift_width = history length (number of previous branches)
+       */
+      pred_dir->perc = bpred_perceptron_create(l1size, l2size, shift_width);
+      if (!pred_dir->perc)
+        fatal("cannot allocate perceptron predictor");
       break;
     }
    
-    // -Project ///////////////////////////////////////////// Perceptron //////
-
   case BPredTaken:
   case BPredNotTaken:
     /* no other state */
@@ -334,44 +300,43 @@ bpred_dir_config(
   char name[],			/* predictor name */
   FILE *stream)			/* output stream */
 {
-  switch (pred_dir->class) {
-  // -Project ///////////////////////////////////////////// Perceptron //////
-    // BPredPerc: This segment outputs the configuration of the Perceptron predictor, 
-    // detailing its key parameters including the number of perceptrons, weight bit size, 
-    // and history length. 
-
-  case BPredPerc:
-    fprintf(stream,
-            "pred_dir: %s: perceptron: %d entries, %d weight_bits, history=%d\n",
-            name,
-            pred_dir->config.perc.weight_i,
-            pred_dir->config.perc.weight_bits,
-            pred_dir->config.perc.history);
-    break;
+  switch (pred_dir->class) 
+  {
     // -Project ///////////////////////////////////////////// Perceptron //////
+      // BPredPerc: This segment outputs the configuration of the Perceptron predictor, 
+      // detailing its key parameters including the number of perceptrons, weight bit size, 
+      // and history length. 
 
-  case BPred2Level:
-    fprintf(stream,
-      "pred_dir: %s: 2-lvl: %d l1-sz, %d bits/ent, %s xor, %d l2-sz, direct-mapped\n",
-      name, pred_dir->config.two.l1size, pred_dir->config.two.shift_width,
-      pred_dir->config.two.xor ? "" : "no", pred_dir->config.two.l2size);
-    break;
+    case BPredPerc:
+      if (pred_dir->perc)
+        bpred_perceptron_config(pred_dir->perc, name, stream);
+      else
+        fprintf(stream, "pred_dir: %s: perceptron (not initialized)\n", name);
+      break;
+      // -Project ///////////////////////////////////////////// Perceptron //////
 
-  case BPred2bit:
-    fprintf(stream, "pred_dir: %s: 2-bit: %d entries, direct-mapped\n",
-      name, pred_dir->config.bimod.size);
-    break;
+    case BPred2Level:
+      fprintf(stream,
+        "pred_dir: %s: 2-lvl: %d l1-sz, %d bits/ent, %s xor, %d l2-sz, direct-mapped\n",
+        name, pred_dir->config.two.l1size, pred_dir->config.two.shift_width,
+        pred_dir->config.two.xor ? "" : "no", pred_dir->config.two.l2size);
+      break;
 
-  case BPredTaken:
-    fprintf(stream, "pred_dir: %s: predict taken\n", name);
-    break;
+    case BPred2bit:
+      fprintf(stream, "pred_dir: %s: 2-bit: %d entries, direct-mapped\n",
+        name, pred_dir->config.bimod.size);
+      break;
 
-  case BPredNotTaken:
-    fprintf(stream, "pred_dir: %s: predict not taken\n", name);
-    break;
+    case BPredTaken:
+      fprintf(stream, "pred_dir: %s: predict taken\n", name);
+      break;
 
-  default:
-    panic("bogus branch direction predictor class");
+    case BPredNotTaken:
+      fprintf(stream, "pred_dir: %s: predict not taken\n", name);
+      break;
+
+    default:
+      panic("bogus branch direction predictor class");
   }
 }
 
@@ -602,8 +567,8 @@ bpred_dir_lookup(struct bpred_dir_t *pred_dir,	/* branch dir predictor inst */
   /* Except for jumps, get a pointer to direction-prediction bits */
   switch (pred_dir->class) {
     case BPred2Level:
-      {
-	int l1index, l2index;
+    {
+	    int l1index, l2index;
 
         /* traverse 2-level tables */
         l1index = (baddr >> MD_BR_SHIFT) & (pred_dir->config.two.l1size - 1);
@@ -624,69 +589,22 @@ bpred_dir_lookup(struct bpred_dir_t *pred_dir,	/* branch dir predictor inst */
 #endif
 	  }
 	else
-	  {
-	    l2index =
-	      l2index
-		| ((baddr >> MD_BR_SHIFT) << pred_dir->config.two.shift_width);
-	  }
-        l2index = l2index & (pred_dir->config.two.l2size - 1);
+  { 
+    l2index = l2index | ((baddr >> MD_BR_SHIFT) << pred_dir->config.two.shift_width);
+  }
+  
+  l2index = l2index & (pred_dir->config.two.l2size - 1);
 
         /* get a pointer to prediction state information */
         p = &pred_dir->config.two.l2table[l2index];
-      }
-      break;
-      // -Project ///////////////////////////////////////////// Perceptron //////
-// Here we implement the way the look up works in the perceptron predictor.
-// This implementation is mimicing the way the perceptron predictor is implemented in the paper.
-
-
-
-// -Project ////////////////////////////////////////////////// Perceptron
-case BPredPerc:
-{
-    int idx, h;
-    int sum = 0;
-    int hist_len = pred_dir->config.perc.history;
-
-    /* Perceptron index: hash PC -> table entry */
-    idx = (baddr >> MD_BR_SHIFT) % pred_dir->config.perc.weight_i;
-    pred_dir->config.perc.i = idx;
-
-    /*
-     * Compute perceptron output:
-     * y = w0 (bias) + sum( wi * xi )
-     * where xi = ±1 history bits
-     */
-
-    /* Add bias weight (weight 0) multiplied by constant +1 */
-    sum = pred_dir->config.perc.weight_table[idx][0];
-
-    /* Dot product for remaining history bits */
-    for (h = 1; h < hist_len; h++)
-    {
-        int x = pred_dir->config.perc.mask_table[h];
-        if (x == 0) x = -1;       // encode history as ±1
-
-        sum += pred_dir->config.perc.weight_table[idx][h] * x;
     }
+      break;
 
-    /* Store perceptron output for update() */
-    pred_dir->config.perc.lookup_out = sum;
+    case BPredPerc:
+      if (pred_dir->perc)
+        p = (unsigned char *)bpred_perceptron_lookup(pred_dir->perc, baddr);
+      break;
 
-    /*
-     * Return a non-null pointer to keep interface consistent.
-     * Not actually used by perceptron predictor.
-     */
-    p = (unsigned char *)&pred_dir->config.perc.weight_table[idx][0];
-}
-break;
-// -Project ////////////////////////////////////////////////// Perceptron
-
-
-
-
-
-// -Project ///////////////////////////////////////////// Perceptron //////
     case BPred2bit:
       p = &pred_dir->config.bimod.table[BIMOD_HASH(pred_dir, baddr)];
       break;
@@ -694,8 +612,8 @@ break;
     case BPredNotTaken:
       break;
     default:
-      panic("bogus branch direction predictor class");
-    }
+        panic("bogus branch direction predictor class");
+  }
 
   return (char *)p;
 }
@@ -741,37 +659,14 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
     /* ---------- PERCEPTRON LOOKUP ---------- */
     case BPredPerc:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
-	    {
-        int hist = pred->dirpred.bimod->config.perc.history;
-        int idx;
-        int y;
-
-        if (hist > MAX_HIST)
-          hist = MAX_HIST;
-
-        /* same index scheme as update */
-        // idx = (baddr >> 2) % pred->dirpred.bimod->config.perc.weight_i;
-        //
-
-        idx = (((baddr >> 2) ^ (baddr >> 13) ^ (baddr >> 17))
-          & (pred->dirpred.bimod->config.perc.weight_i - 1));
-        
-
-        /* dot-product: bias + Σ (w_i * h_i) */
-        y = pred->dirpred.bimod->config.perc.weight_table[idx][0]; /* bias */
-
-        for (i = 1; i < hist; i++)
-          {
-            int x = pred->dirpred.bimod->config.perc.mask_table[i];
-            if (x == 0) x = -1;
-            y += pred->dirpred.bimod->config.perc.weight_table[idx][i] * x;
-          }
-
-        /* stash output and index for update stage */
-        pred->dirpred.bimod->config.perc.lookup_out = y;
-        pred->dirpred.bimod->config.perc.i = idx;
+      {
+        /* For conditional branches, use perceptron predictor */
+        if (pred->dirpred.bimod && pred->dirpred.bimod->perc)
+        {
+          dir_update_ptr->pdir1 = 
+            bpred_perceptron_lookup(pred->dirpred.bimod->perc, baddr);
+        }
       }
-      
       break;
     /* ---------- END PERCEPTRON LOOKUP ------ */
     case BPredAlpha21264:
@@ -1136,12 +1031,12 @@ bpred_update(struct bpred_t *pred,	/* branch predictor instance */
       if (taken)
       {
         if (*dir_update_ptr->pdir1 < 3)
-      ++*dir_update_ptr->pdir1;
+          ++*dir_update_ptr->pdir1;
       }
       else
-      { /* not taken */
+      {
         if (*dir_update_ptr->pdir1 > 0)
-      --*dir_update_ptr->pdir1;
+          --*dir_update_ptr->pdir1;
       }
     }
 
@@ -1184,71 +1079,12 @@ bpred_update(struct bpred_t *pred,	/* branch predictor instance */
     /* ---------- PERCEPTRON UPDATE SEPARATED FROM BIMODAL ---------- */
     if (pred->class == BPredPerc)
     {
-      int idx;
-      int t = taken ? +1 : -1;
-      int y = pred->dirpred.bimod->config.perc.lookup_out;
-      int hist = pred->dirpred.bimod->config.perc.history;
-      int MAXW = pred->dirpred.bimod->config.perc.max_weight;
-
-      if (hist > MAX_HIST)
-        hist = MAX_HIST;
-
-      /* index recomputed (same as lookup) */
-      // idx = (baddr >> 2) % pred->dirpred.bimod->config.perc.weight_i;
-      //
-
-      idx = (((baddr >> 2) ^ (baddr >> 13) ^ (baddr >> 17))
-        & (pred->dirpred.bimod->config.perc.weight_i - 1));
-        
-
-      // {
-        int abs_y = (y < 0 ? -y : y);
-        int theta = (int)(1.93 * hist) + 14;
-
-      /* Extra stabilization for large histories */
-      if (hist > 32)
-        theta += hist / 4;
-
-      if ((t * y) <= 0 || abs_y <= theta)
+      /* Update perceptron predictor using the separate module */
+      if (pred->dirpred.bimod && pred->dirpred.bimod->perc)
       {
-        /* bias weight w0 */
-        int w0 = pred->dirpred.bimod->config.perc.weight_table[idx][0];
-        w0 += t;
-        if (w0 > MAXW)  w0 = MAXW;
-        if (w0 < -MAXW) w0 = -MAXW;
-        pred->dirpred.bimod->config.perc.weight_table[idx][0] = w0;
-
-        /* other weights */
-        for (i = 1; i < hist; i++)
-        {
-          int x = pred->dirpred.bimod->config.perc.mask_table[i];
-          if (x == 0) x = -1;
-          int w = pred->dirpred.bimod->config.perc.weight_table[idx][i];
-
-          w += (t == x) ? 1 : -1;
-
-          if (w > MAXW)  w = MAXW;
-          if (w < -MAXW) w = -MAXW;
-
-          pred->dirpred.bimod->config.perc.weight_table[idx][i] = w;
-        }
+        bpred_perceptron_update(pred->dirpred.bimod->perc, baddr, taken);
       }
-        // }
-
-        /* history shift */
-      
-
-      /* Correct history shift: move older to the front */
-      for (i = 0; i < hist - 1; i++)
-        pred->dirpred.bimod->config.perc.mask_table[i] =
-            pred->dirpred.bimod->config.perc.mask_table[i + 1];
-
-      /* Insert newest outcome at the END */
-      pred->dirpred.bimod->config.perc.mask_table[hist - 1] =
-          (taken ? +1 : -1);
-
-
-      /* do NOT touch bimodal counters; done for this branch */
+      /* Perceptron update is complete - do not touch bimodal counters */
       return;
     }
     /* ---------- END PERCEPTRON UPDATE ----------------------------- */
